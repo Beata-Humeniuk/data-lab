@@ -614,6 +614,13 @@ function nameField(pi, p) {
   t.setAttribute('aria-label', M('dv.resultName'));
   return t;
 }
+function moveStep(p, si, by) {
+  const to = si + by;
+  if (to < 0 || to >= p.steps.length) return;
+  const [step] = p.steps.splice(si, 1);
+  p.steps.splice(to, 0, step);
+  structural();
+}
 function renderWork() {
   const box = $('work');
   box.textContent = '';
@@ -654,6 +661,8 @@ function renderWork() {
         el('span', { class: 'step-no', text: (si + 1) + '.' }),
         el('span', { class: 'step-name', text: stepLabel(s.kind, kindNow) }),
         el('span', { class: 'grow' }),
+        el('button', { class: 'mv', text: '↑', title: M('dv.stepUp'), 'aria-label': M('dv.stepUp'), disabled: si === 0, onclick: () => moveStep(p, si, -1) }),
+        el('button', { class: 'mv', text: '↓', title: M('dv.stepDown'), 'aria-label': M('dv.stepDown'), disabled: si === p.steps.length - 1, onclick: () => moveStep(p, si, 1) }),
         el('button', { class: 'x', text: '✕', title: M('dv.removeStep'), onclick: () => { p.steps.splice(si, 1); structural(); } })
       ]));
       st.appendChild(stepForm(p, pi, s, si, cols, sources, colsOf, kindNow, sr && sr.fields ? sr.fields : []));

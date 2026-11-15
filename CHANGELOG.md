@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.4.0] - 2026-11-15
+
+- Steps move up and down with the **↑** and **↓** arrows next to them.
+
 ## [1.3.0] - 2026-11-15
 
 - The left panel holds inputs and transformations apart: **+ Add a

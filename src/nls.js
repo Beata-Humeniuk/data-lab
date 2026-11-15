@@ -275,6 +275,8 @@ const EN = {
   "dv.stepNotFor": "„{step}\" works on a list, here is {kind}",
   "dv.noLists": "The inputs are empty yet — paste the data.",
   "dv.removeStep": "Remove the step",
+  "dv.stepUp": "Move the step up",
+  "dv.stepDown": "Move the step down",
   "dv.addStep": "+ step:",
   "dv.takeOne": "or take:",
   "dv.result": "Result",

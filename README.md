@@ -154,6 +154,9 @@ the current data type.
 Each step provides a preview, allowing you to inspect how the data changes
 throughout the transformation.
 
+Move a step with the **↑** and **↓** arrows next to it; the steps after it run
+again in the new order.
+
 ### 4. Save, Undo and Redo
 
 Changes are not written until **Save** (Ctrl+S / Cmd+S). **Unsaved** next to

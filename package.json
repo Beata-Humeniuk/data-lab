@@ -2,7 +2,7 @@
   "name": "data-lab",
   "displayName": "DataLab",
   "description": "%description%",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "publisher": "beatahumeniuk",
   "icon": "media/icon.png",
   "license": "MIT",

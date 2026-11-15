@@ -13,6 +13,7 @@ runChecks([
   [d.includes("type: 'preview'") && d.includes("type: 'save'") && d.includes("type: 'exportMd'") && d.includes("type: 'pickFile'") && d.includes("type: 'openOutput'") && d.includes("type: 'openAsFlow'") && d.includes("type: 'saveAlgorithm'") && d.includes("type: 'ready'"), 'lab view host protocol'],
   [['"cond.op.eq"', '"cond.op.isSet"', '"cond.op.lenMax"'].every((x) => d.includes(x)), 'filter conditions have labels, not keys'],
   [d.includes('id="undoBtn"') && d.includes('id="redoBtn"') && d.includes('id="saveBtn"') && d.includes('id="dirty"'), 'undo, redo, save and the unsaved mark in the header'],
+  [d.includes('"Move the step up"') && d.includes('"Move the step down"') && d.includes('function moveStep('), 'steps move up and down'],
   [buildTwice(), 'a fresh nonce for every page']
 ]);
 function buildTwice() {

@@ -32,6 +32,9 @@ button{font-family:inherit;font-size:12.5px;cursor:pointer;border-radius:4px;pad
 .link:hover{color:var(--fg);background:var(--hover)}
 .x{background:transparent;color:var(--dim);border:none;font-size:14px;padding:2px 6px}
 .x:hover{color:var(--err)}
+.mv{background:transparent;color:var(--dim);border:none;font-size:14px;padding:2px 6px}
+.mv:hover:not(:disabled){color:var(--fg)}
+.mv:disabled{opacity:.3;cursor:default}
 header{flex:0 0 auto;border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 header .t{font-size:14px;font-weight:600}
 header .grow{flex:1 1 auto}
