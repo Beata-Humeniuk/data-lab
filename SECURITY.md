@@ -65,10 +65,12 @@ DataLab saves each lab as a file in the labs folder:
 <labs folder>/<name>.lab.json
 ```
 
-The labs folder is `data` in the open workspace, or the path set in
-`dataLab.labsFolder`. Without an open folder and without an absolute path,
-labs are kept in the extension's global storage. In an untrusted workspace,
-the workspace cannot change `dataLab.labsFolder`.
+The labs folder is the path set in `dataLab.labsFolder`; without it, the
+`data` folder of the Spec Studio package (`<workspace name>-spec/data`) when
+Spec Studio is installed and the package exists, or `data` in the open
+workspace. Without an open folder and without an absolute path, labs are kept
+in the extension's global storage. In an untrusted workspace, the workspace
+cannot change `dataLab.labsFolder` or `dataLab.useSpecPackage`.
 
 Stored information includes:
 

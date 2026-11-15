@@ -1,5 +1,6 @@
 {
   "description": "Sample data in any format (JSON, XML, YAML, CSV, key=value) and its transformations step by step: filter, sort, merge, compare and compute, with every step's result as a table.",
   "command.open.title": "Open a Lab",
-  "config.labsFolder.description": "Folder where labs are saved, one `<name>.lab.json` file per lab. A relative path is resolved against the first workspace folder; an absolute path is used as it is. Leave empty to use `data` in the workspace."
+  "config.labsFolder.description": "Folder where labs are saved, one `<name>.lab.json` file per lab. A relative path is resolved against the first workspace folder; an absolute path is used as it is. Leave empty to use the default: the `data` folder of the Spec Studio package (see **Use Spec Package**), or `data` in the workspace.",
+  "config.useSpecPackage.description": "When Spec Studio is installed and the workspace has its package folder (`<workspace name>-spec`), save labs in its `data` folder. Applies only when **Labs Folder** is empty."
 }
