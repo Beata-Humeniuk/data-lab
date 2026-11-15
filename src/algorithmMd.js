@@ -144,6 +144,7 @@ function algorithmMd(opts) {
   const steps = p.steps || [];
   if (!steps.length) lines.push('No steps.');
   steps.forEach((s, i) => lines.push((i + 1) + '. ' + stepText(s, opts.catalog)));
+  if (p.comment && String(p.comment.field || '').trim()) lines.push('', 'Before each element of the result, a comment: the value of ' + code(p.comment.field) + (p.comment.keep === false ? ', the field left out of the data.' : '.'));
   if (run && run.result !== undefined && run.result !== null) {
     const v = run.result;
     lines.push('', '## Output', '');

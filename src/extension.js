@@ -213,7 +213,9 @@ async function openLab(context, file, id) {
     r.pipelines.forEach((p) => p.sources.forEach((s) => paths.add(s.path)));
     for (const p of paths) columnsOf[p] = dp.columnsOf(dp.asList(dp.valueAt(r.root, p)));
     r.pipelines.forEach((p, i) => {
-      if (p.result !== undefined && p.result !== null) p.text = dp.outputText(p.result, fmt, String((current().pipelines[i] || {}).name || '').trim() || 'result');
+      const pl = current().pipelines[i] || {};
+      const comment = pl.comment && typeof pl.comment === 'object' ? pl.comment : {};
+      if (p.result !== undefined && p.result !== null) p.text = dp.outputText(p.result, fmt, String(pl.name || '').trim() || 'result', { commentField: comment.field, keepField: comment.keep !== false });
       delete p.result;
     });
     delete r.root;
@@ -301,7 +303,7 @@ async function openLab(context, file, id) {
       return;
     }
     if (m.type === 'openOutput') {
-      const d = await vscode.workspace.openTextDocument({ language: outputLanguage(m.format), content: String(m.text || '') });
+      const d = await vscode.workspace.openTextDocument({ language: m.comments && outputLanguage(m.format) === 'json' ? 'jsonc' : outputLanguage(m.format), content: String(m.text || '') });
       await vscode.window.showTextDocument(d, { preview: false, viewColumn: vscode.ViewColumn.Beside });
       return;
     }

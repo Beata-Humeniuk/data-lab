@@ -651,6 +651,22 @@ function nameField(pi, p) {
   });
   return t;
 }
+function commentRow(p, pi, r) {
+  const c = p.comment && typeof p.comment === 'object' ? p.comment : {};
+  const cols = (r.endColumns || []).filter((x) => x !== '');
+  const kids = [
+    el('span', { class: 'lbl', text: M('dv.comment') }),
+    columnPick('p' + pi + '.comment', c.field || '', cols, (v) => { if (v) p.comment = { field: v, keep: c.keep !== false }; else delete p.comment; structural(); }, M('dv.commentNone'))
+  ];
+  if (c.field) {
+    const cb = el('input', { type: 'checkbox' });
+    cb.checked = c.keep !== false;
+    cb.addEventListener('change', () => { p.comment = { field: c.field, keep: cb.checked }; structural(); });
+    kids.push(el('label', { class: 'check' }, [cb, M('dv.commentKeep')]));
+    if ((doc.format || 'json') === 'csv') kids.push(el('span', { class: 'dim small', text: M('dv.commentNoCsv') }));
+  }
+  return el('div', { class: 'row' }, kids);
+}
 function moveStep(p, si, by) {
   const to = si + by;
   if (to < 0 || to >= p.steps.length) return;
@@ -727,8 +743,9 @@ function renderWork() {
       body.appendChild(el('div', { class: 'row result-row' }, [
         el('span', { class: 'lbl', text: M('dv.result') }),
         pick('p' + pi + '.fmt', doc.format || 'json', [['json', 'JSON'], ['xml', 'XML'], ['yaml', 'YAML'], ['csv', 'CSV'], ['properties', 'properties']], (v) => { doc.format = v; structural(); }),
-        el('button', { class: 'link', text: M('run.openEditor'), onclick: () => vscodeApi.postMessage({ type: 'openOutput', text: r.text, format: doc.format || 'json' }) })
+        el('button', { class: 'link', text: M('run.openEditor'), onclick: () => vscodeApi.postMessage({ type: 'openOutput', text: r.text, format: doc.format || 'json', comments: !!(p.comment && p.comment.field) }) })
       ]));
+      body.appendChild(commentRow(p, pi, r));
       body.appendChild(el('pre', { text: r.text }));
     }
     card.appendChild(body);

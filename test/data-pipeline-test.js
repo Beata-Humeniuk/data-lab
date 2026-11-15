@@ -258,3 +258,17 @@ runChecks([
     [q('d') === '{"Name":"A","ProductTypeCode":"1","variants":"X","type":"1"}', 'with a transformation: the result in another column, this one stays']
   ]);
 }
+
+{
+  const { outputText } = require('../src/dataPipeline');
+  const v = [{ Name: 'Konto A', code: '1' }, { Name: 'Konto B', code: '2' }];
+  const o = (f, keep) => outputText(v, f, 'result', { commentField: 'Name', keepField: keep });
+  runChecks([
+    [o('xml', true).includes('  <!-- Konto A -->\n  <item>') && o('xml', true).includes('  <!-- Konto B -->\n  <item>'), 'XML: a comment before each element'],
+    [o('yaml', false).startsWith("# Konto A\n- code: '1'") && o('yaml', false).includes("# Konto B\n- code: '2'"), 'YAML: a comment before each element, the field left out'],
+    [o('properties', true).startsWith('# Konto A\nresult[0].Name=Konto A') && o('properties', true).includes('# Konto B\nresult[1].Name'), 'properties: a comment before each element'],
+    [o('json', true).startsWith('[\n  // Konto A\n  {') && o('json', true).includes('  // Konto B\n  {'), 'JSON with comments'],
+    [o('csv', true) === outputText(v, 'csv', 'result'), 'CSV: no comments'],
+    [outputText(v, 'xml', 'result', { commentField: 'Name' }).indexOf('<!--') > 0 && !outputText([{ Name: 'a--b' }], 'xml', 'r', { commentField: 'Name' }).includes('a--b -->'), 'no -- inside an XML comment']
+  ]);
+}

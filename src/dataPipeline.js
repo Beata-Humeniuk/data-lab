@@ -420,10 +420,46 @@ function csvText(v) {
   return [cols.map(quote).join(',')].concat(rows.map((r) => cols.map((c) => quote(isPlainObject(r) ? tableCell(r, c) : (c === 'value' ? r : undefined))).join(','))).join('\n') + '\n';
 }
 const RESULT_FORMATS = ['json', 'xml', 'yaml', 'properties', 'csv'];
-function outputText(v, format, name) {
+function plainOutput(v, format, name) {
   if (format === 'csv') return csvText(v);
   if (format === 'xml') return serialize(v, 'xml', name);
   return serialize(unmarked(v), RESULT_FORMATS.indexOf(format) >= 0 ? format : 'json', name);
+}
+// A comment before each element of a list (before an object: one), its text
+// the value of one of the element's fields. CSV has no comments.
+const COMMENT_FORMATS = ['json', 'xml', 'yaml', 'properties'];
+function commentLine(text, format, indent) {
+  const t = String(text).replace(/\s*[\r\n]+\s*/g, ' ').trim();
+  if (format === 'xml') return indent + '<!-- ' + t.replace(/--/g, '- -').replace(/-$/, '- ') + ' -->';
+  if (format === 'json') return indent + '// ' + t;
+  return indent + '# ' + t;
+}
+function outputText(v, format, name, opts) {
+  const field = String((opts && opts.commentField) || '').trim();
+  if (!field || COMMENT_FORMATS.indexOf(format) < 0 || (!Array.isArray(v) && !isPlainObject(v))) return plainOutput(v, format, name);
+  const list = Array.isArray(v) ? v : [v];
+  const texts = list.map((el) => { const c = isPlainObject(el) ? cell(el, field) : undefined; return c === undefined || c === null || typeof c === 'object' ? '' : textOf(c); });
+  const data = opts.keepField === false ? list.map((el) => (isPlainObject(el) ? removePath(clone(el), field) : el)) : list;
+  const value = Array.isArray(v) ? data : data[0];
+  if (format === 'json' && !Array.isArray(v)) return (texts[0] ? commentLine(texts[0], 'json', '') + '\n' : '') + plainOutput(value, format, name);
+  if (format === 'json') {
+    const parts = data.map((el, i) => (texts[i] ? commentLine(texts[i], 'json', '  ') + '\n' : '') + JSON.stringify(unmarked(el), null, 2).replace(/^/gm, '  '));
+    return parts.length ? '[\n' + parts.join(',\n') + '\n]\n' : '[]\n';
+  }
+  const lines = plainOutput(value, format, name).split('\n');
+  const out = [];
+  let i = 0;
+  const starts = format === 'yaml' ? (l) => /^- /.test(l) || (!Array.isArray(v) && out.length === 0 && l !== '')
+    : format === 'properties' ? (l) => (Array.isArray(v) ? l.indexOf(name + '[' + i + ']') === 0 : out.length === 0)
+    : (l) => /^  <[^/!?]/.test(l);
+  for (const l of lines) {
+    if (i < texts.length && starts(l)) {
+      if (texts[i]) out.push(commentLine(texts[i], format, format === 'xml' ? '  ' : ''));
+      i++;
+    }
+    out.push(l);
+  }
+  return out.join('\n');
 }
 function dropped(el, step) {
   if (!isPlainObject(el)) return el;
@@ -674,4 +710,4 @@ function changeCatalog(t) {
     params: k.params.map((p) => ({ key: p.key, label: p.labelKey ? t(p.labelKey) : p.key, def: p.def, size: p.size, options: p.options })) }));
 }
 
-module.exports = { RESULT_FORMATS, outputText, csvText, deepFields, STEP_KINDS, LIST_STEPS, VALUE_STEPS, OBJECT_STEPS, stepsFor, kindOf, readInputs, listsIn, sourcesOf, columnsOf, runDocument, view, valueAt, asList, changeCatalog };
+module.exports = { RESULT_FORMATS, COMMENT_FORMATS, outputText, csvText, deepFields, STEP_KINDS, LIST_STEPS, VALUE_STEPS, OBJECT_STEPS, stepsFor, kindOf, readInputs, listsIn, sourcesOf, columnsOf, runDocument, view, valueAt, asList, changeCatalog };

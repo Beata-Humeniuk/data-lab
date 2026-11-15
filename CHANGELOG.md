@@ -3,6 +3,10 @@
 ## [1.4.0] - 2026-11-15
 
 - Steps move up and down with the **↑** and **↓** arrows next to them.
+- **comment before each element** under the result: the value of a chosen
+  field goes before each element as a comment — `<!-- … -->` in XML, `# …`
+  in YAML and properties, `// …` in JSON (opened as JSON with comments). The
+  field can stay in the data or be left out. CSV has no comments.
 - A transformation has its own name, any text, at the top of it: the list and
   the md show it. The result name stays the name other transformations use;
   renaming it renames it in the transformations that use it, and a character
