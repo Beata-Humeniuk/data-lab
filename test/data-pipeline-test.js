@@ -213,3 +213,18 @@ runChecks([
     [JSON.stringify(some.steps[0].view.data[0]) === JSON.stringify({ Name: 'Konto A', ProductTypeCode: '100', Name_Subcategory: 'Sub A', Kind: 'X' }), 'all fields or the chosen ones: the same names']
   ]);
 }
+
+{
+  const d = { inputs: [{ name: 'l', text: '[{"Name":"Konto PLUS"}]' }], pipelines: [
+    { name: 'empty', source: 'l', steps: [{ kind: 'change', field: 'Name', how: { kind: 'replace', find: '', with: 'INDV,JOIN' } }] },
+    { name: 'some', source: 'l', steps: [{ kind: 'change', field: 'Name', how: { kind: 'replace', find: 'PLUS', with: 'MAX' } }] },
+    { name: 'fixed', source: 'l', steps: [{ kind: 'change', field: 'Name', how: { kind: 'constant', value: 'INDV,JOIN', then: [{ kind: 'split', sep: ',' }] } }] }
+  ] };
+  const r7 = runDocument(d, {});
+  const q = (n) => r7.pipelines.find((x) => x.name === n).result[0].Name;
+  runChecks([
+    [q('empty') === 'Konto PLUS', 'replace with nothing to find leaves the text as it is'],
+    [q('some') === 'Konto MAX', 'replace a text'],
+    [JSON.stringify(q('fixed')) === '["INDV","JOIN"]', 'a fixed value, split into a list']
+  ]);
+}

@@ -3,6 +3,8 @@
 ## [1.4.0] - 2026-11-15
 
 - Steps move up and down with the **↑** and **↓** arrows next to them.
+- **replace a text** with nothing to find leaves the text as it is; before, it
+  put the new text between every two letters.
 
 ## [1.3.0] - 2026-11-15
 
