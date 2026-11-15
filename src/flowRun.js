@@ -1,26 +1,3 @@
-// A flow run on sample data (owner, 2026-11-15: „chcę mieć możliwość na
-// szybko sobie coś sprawdzić … wymyślić jakie przekształcenia porobić i
-// jakie kroki na konkretnych przykładach"). The flow's steps are executed in
-// order over the samples of its inputs — the request (model zero, its
-// fields bare) and the context objects (by name) — and what each step
-// produced is kept under its output model, as later steps reference it
-// (`model.pole`).
-//
-// Executed: mapping rows (with every conversion of the compatibility
-// popup, value tables, missing-data rules, constants, lists, whole objects,
-// list streams), validations built from conditions (all RULE_OPS), built
-// transformations (set, calc, if, forEach, stream with every chain step and
-// end, decide, return, respond, note), branches of alt/opt fragments.
-// A step that takes data from outside (a call, a database, a cache, a
-// library) gives what its sample result says — the call's response sample,
-// or a result pasted for the run.
-//
-// What the run cannot decide — a rule in words, an unknown function, an
-// operator that needs outside data (existsIn, format) — it says, and it
-// never guesses a value or an outcome.
-//
-// Pure: no vscode.
-
 const run = require('./mappingRun');
 const { RunError, evalExpr, walk, textOf, numberOf, truthy, isPlainObject, isDate, splitPath, plainPath, writeAt, parseSample, readWhenNull } = run;
 const { pathOf } = require('./fragments');
@@ -38,15 +15,9 @@ function listOf(text) {
   return String(text || '').split(/\s*[,;]\s*/).map(literal).filter((x) => x !== '');
 }
 
-// --- names ------------------------------------------------------------------
-
-// Scopes are searched innermost first: an element of a list (its fields
-// relative to it), then the flow's data.
 function hitsIn(scopes, name) {
   const segs = splitPath(name);
   if (!segs.length) return { known: false, hits: [] };
-  // An element of a list (a scope with `self`): a field other elements
-  // have and this one lacks is no value here, not an unknown name.
   let inElement = false;
   for (const sc of scopes) {
     if (sc.self !== undefined && isPlainObject(sc.value)) inElement = true;
@@ -68,21 +39,16 @@ function valueIn(scopes, name) {
   if (!r.hits.length) return null;
   return r.hits.length === 1 ? r.hits[0].value : r.hits.map((h) => h.value);
 }
-// The elements a list field holds: every value the path reaches.
 function elementsIn(scopes, name) {
   const r = hitsIn(scopes, name);
   if (!r.known) throw new RunError('unknownName', { name });
   return r.hits.map((h) => h.value).filter((v) => v !== null && v !== undefined);
 }
 
-// A statement's operand: an expression over the data. A bare word or a
-// phrase that is no expression and names nothing is taken as the text
-// itself — and said (`asText`).
 function operand(text, scopes, ctx) {
   const t = String(text == null ? '' : text).trim();
   if (!t) return { value: null };
   try {
-    // A name no element has stays a name nobody has: the word is text.
     const r = evalExpr(t, (name) => { const h = hitsIn(scopes, name); if (h.absent) throw new RunError('unknownName', { name }); return valueIn(scopes, name); }, ctx.opts);
     return { value: r.value, volatile: r.volatile };
   } catch (e) {
@@ -92,9 +58,6 @@ function operand(text, scopes, ctx) {
     throw e;
   }
 }
-
-// --- conditions ---------------------------------------------------------------
-// Three answers: true, false, or null — the run cannot tell (and why).
 
 function cmp(a, b) {
   const an = numberOf(a), bn = numberOf(b);
@@ -140,10 +103,6 @@ function evalCondition(c, scopes, ctx) {
   }
 }
 
-// What a condition compares with (its valueKind): a constant as typed, a
-// value no field holds (today, now …), or a field of the data — read from
-// it; a value written before kinds existed reads as a field when it names
-// one, as the text otherwise.
 function comparedValue(c, key, scopes, ctx) {
   const kind = c[key + 'Kind'];
   const raw = c[key];
@@ -159,8 +118,6 @@ function comparedValue(c, key, scopes, ctx) {
   const t = String(raw == null ? '' : raw).trim();
   if (t && !/^(['"]).*\1$/.test(t)) {
     const r = hitsIn(scopes, t);
-    // Said to be a field: its value, none when absent. Not said: a field
-    // only when one holds a value by that name — the text otherwise.
     if (kind === 'field') {
       if (!r.known) throw new RunError('unknownName', { name: t });
       return r.hits.length ? r.hits[0].value : null;
@@ -220,7 +177,6 @@ function conditionValue(c, scopes, ctx) {
   const r = hitsIn(scopes, field);
   if (!r.known) throw new RunError('unknownName', { name: field });
   const val = r.hits.length ? r.hits[0].value : null;
-  // „inne → null": the field has no value.
   if ((op === 'eq' || op === 'ne') && c.valueKind === 'other' && c.valueHow === 'null') {
     const none = val === null || val === undefined;
     return op === 'eq' ? none : !none;
@@ -228,7 +184,6 @@ function conditionValue(c, scopes, ctx) {
   switch (op) {
     case 'isSet': return present(val);
     case 'notSet': return !present(val);
-    // „= null" / „≠ null": no value / a value, not the text "null".
     case 'eq': if (v === null || /^null$/i.test(String(v).trim())) return !present(val); return present(val) || v === '' ? same(val, v) : false;
     case 'ne': if (v === null || /^null$/i.test(String(v).trim())) return present(val); return !(present(val) || v === '' ? same(val, v) : false);
     case 'in': return present(val) && listOf(c.value).some((x) => same(val, x));
@@ -248,8 +203,6 @@ function conditionValue(c, scopes, ctx) {
   }
   throw new RunError('conditionInWords', { text: field + ' ' + op });
 }
-
-// --- list streams ------------------------------------------------------------
 
 function relTo(list, f) {
   const p = String(f || '').trim();
@@ -277,8 +230,6 @@ function partField(part, list, el, outer, key) {
   if (!f) return el;
   return valueIn(elementScopes(el, list, outer), f);
 }
-// Missing values (an element without the field, an empty text) count for
-// nothing, as a stream over present values does.
 function filled(values) { return values.filter((x) => x !== null && x !== undefined && !(typeof x === 'string' && x.trim() === '')); }
 function sum(values) { return filled(values).reduce((a, x) => a + numberOf(x, true), 0); }
 
@@ -308,8 +259,6 @@ function runStream(st, scopes, ctx) {
       case 'skip': els = els.slice(numberOf(part.arg, true)); break;
       case 'takeWhile': { const i = els.findIndex((el) => !partTest(part, list, el, scopes, ctx)); els = i < 0 ? els : els.slice(0, i); break; }
       case 'dropWhile': { const i = els.findIndex((el) => !partTest(part, list, el, scopes, ctx)); els = i < 0 ? [] : els.slice(i); break; }
-      // Another list: the elements with (or without) a match in it, by the
-      // pairs of fields; or each element with its match attached.
       case 'inOther': case 'notInOther': case 'joinOther': {
         const otherList = String(part.arg || '').trim();
         if (!otherList) throw new RunError('noList');
@@ -338,7 +287,6 @@ function runStream(st, scopes, ctx) {
     case 'toSet': { const seen = new Set(); return els.filter((el) => { const k = JSON.stringify(el); if (seen.has(k)) return false; seen.add(k); return true; }); }
     case 'first': { const hit = hasTest && (end.conditions || []).length ? els.find((el) => partTest(end, list, el, scopes, ctx)) : els[0]; return hit === undefined ? null : hit; }
     case 'last': { const hits = hasTest && (end.conditions || []).length ? els.filter((el) => partTest(end, list, el, scopes, ctx)) : els; return hits.length ? hits[hits.length - 1] : null; }
-    // The element at a position, counted from 1.
     case 'nth': { const i = numberOf(end.arg || '1', true) - 1; return i >= 0 && i < els.length ? els[i] : null; }
     case 'any': return els.some((el) => partTest(end, list, el, scopes, ctx));
     case 'all': return els.every((el) => partTest(end, list, el, scopes, ctx));
@@ -368,11 +316,6 @@ function runStream(st, scopes, ctx) {
   throw new RunError('syntax', { text: end.op });
 }
 
-// --- ways picked from the "+ ƒ" list -------------------------------------------
-// entry.how: { kind, …parameters, then: [ next steps ] } — each step works on
-// what the one before gave. A step over a list works on the list; any other
-// step on each value of it.
-
 const { HOW_LIST_KINDS } = require('./howKinds');
 const DATE_FORMATS = { 'RRRR-MM-DD': 'yyyy-MM-dd', 'DD.MM.RRRR': 'dd.MM.yyyy', 'RRRR-MM-DD gg:mm:ss': 'yyyy-MM-dd HH:mm:ss', 'DD.MM.RRRR gg:mm': 'dd.MM.yyyy HH:mm' };
 const READ_PATTERNS = ['dd.MM.yyyy HH:mm:ss', 'dd.MM.yyyy HH:mm', 'dd.MM.yyyy', 'dd-MM-yyyy', 'yyyy/MM/dd', 'dd/MM/yyyy', 'yyyyMMdd'];
@@ -381,9 +324,9 @@ function toDateAny(v) {
   if (isDate(v)) return v;
   if (typeof v === 'number') return run.fromEpoch(v);
   const t = textOf(v).trim();
-  try { return run.parseIso(t); } catch (e) { /* not ISO */ }
+  try { return run.parseIso(t); } catch (e) {               }
   for (const p of READ_PATTERNS) {
-    try { return run.parseWithPattern(t, p, /H/.test(p) ? 'datetime' : 'date'); } catch (e) { /* the next one */ }
+    try { return run.parseWithPattern(t, p, /H/.test(p) ? 'datetime' : 'date'); } catch (e) {                    }
   }
   throw new RunError('badDate', { value: t, pattern: 'ISO / dd.MM.yyyy' });
 }
@@ -441,7 +384,6 @@ function howStep(h, cur, base, scopes, ctx, env) {
     if (!rel) return el;
     return valueIn([{ value: el, self: '' }], rel);
   };
-  // The field (or fields joined) taken from an element.
   const taken = (el) => {
     if (el === null || el === undefined) return null;
     const more = (Array.isArray(h.more) ? h.more : []).map((m) => String(m || '').trim()).filter(Boolean);
@@ -497,7 +439,6 @@ function howStep(h, cur, base, scopes, ctx, env) {
       case 'listReverse': return els.slice().reverse();
     }
   }
-  // Values made, not read.
   switch (kind) {
     case 'today': env.volatile = true; return run.mkDate('date', Object.assign(run.nowParts(ctx.opts.clock), { H: 0, m: 0, s: 0 }));
     case 'now': env.volatile = true; return run.mkDate('datetime', run.nowParts(ctx.opts.clock));
@@ -522,7 +463,6 @@ function howStep(h, cur, base, scopes, ctx, env) {
       return [cur].concat((h.parts || []).map(opnd)).filter((x) => x !== null && x !== undefined && textOf(x) !== '').map(textOf).join(sep);
     }
   }
-  // Each value on its own.
   const one = (v) => {
     if (v === null || v === undefined) return v;
     const t = () => textOf(v);
@@ -627,10 +567,6 @@ function howStep(h, cur, base, scopes, ctx, env) {
   return Array.isArray(cur) ? cur.map(one) : one(cur);
 }
 
-// --- mapping rows ---------------------------------------------------------------
-
-// Rows of a mapping block evaluated over the data: { doc, rows }. `to`
-// paths lose the target's own name (as mappingTargetOutput reads them).
 function runRows(entries, scopes, ctx, roots, listFields) {
   const doc = {};
   const rows = [];
@@ -646,7 +582,6 @@ function runRows(entries, scopes, ctx, roots, listFields) {
     .sort((a, b) => splitPath(a.to).length - splitPath(b.to).length);
   const put = (to, value, idx, row) => {
     let target = to;
-    // A list the target does not say it has: the row's own parent repeats.
     if (idx.length && !splitPath(to).some((s, j, all) => s.index !== null || lists.has(all.slice(0, j + 1).map((x) => x.name).join('.')))) {
       const segs = to.split('.');
       target = segs.length > 1 ? segs.slice(0, -2).concat(segs[segs.length - 2] + '[]', segs[segs.length - 1]).join('.') : to + '[]';
@@ -654,9 +589,6 @@ function runRows(entries, scopes, ctx, roots, listFields) {
     }
     if (writeAt(doc, target.replace(/\[\]/g, ''), clone(value), idx, lists)) row.outputs.push(textOf(value));
   };
-  // A row's own condition and those of the objects and list elements it
-  // sits in (entry.when): one not met leaves the field unset, the object
-  // unbuilt, the element out of its list; one not computable is said.
   const gates = sorted.filter((g) => g.when && (g.when.conditions || []).some((c) => c && String(c.field || '').trim()));
   const gateResults = new Map();
   const gateOf = (to) => {
@@ -680,7 +612,6 @@ function runRows(entries, scopes, ctx, roots, listFields) {
       else { row.status = 'unsupported'; row.code = (shut.why && shut.why.code) || 'noCondition'; row.params = (shut.why && shut.why.params) || {}; }
       continue;
     }
-    // Only a condition said for an object or element: nothing to put.
     if (e.when && !row.from && !transform && !e.how && !e.stream && typeof e.value !== 'string') { row.status = 'conditionMet'; continue; }
     try {
       if (e.stream) {
@@ -690,7 +621,6 @@ function runRows(entries, scopes, ctx, roots, listFields) {
         put(to, v, [], row);
         continue;
       }
-      // A way picked from the "+ ƒ" list (howKinds.js): its steps in turn.
       if (e.how && e.how.kind) {
         const r = runHow(e.how, row.from, scopes, ctx);
         row.status = 'transformed';
@@ -753,14 +683,10 @@ function missing(row, e, to, idx, put) {
   put(to, v, idx, row);
 }
 
-// --- the flow -------------------------------------------------------------------
-
 function parsedInput(text, fields, format) {
   const p = parseSample(text, format);
   if (!p.ok) return p;
   let value = p.value;
-  // An XML document is its root element; a context object described by its
-  // fields is the object under that root unless its fields name the root.
   const keys = isPlainObject(value) ? Object.keys(value) : [];
   if (keys.length === 1 && isPlainObject(value[keys[0]]) && (p.format === 'xml' || fields)) {
     const root = keys[0];
@@ -782,13 +708,10 @@ function outputName(step) {
   return '';
 }
 
-// flow: the normalized design. data: { inputs: { request, [contextName] },
-// results: { [stepId]: text }, formats, resultFormats }. options: { clock, uuid, wholeTexts }.
 function runFlow(flow, data, options) {
   const ctx = { opts: options || {}, wholeTexts: (options && options.wholeTexts) || [] };
   const inputs = (data && data.inputs) || {};
   const results = (data && data.results) || {};
-  // The format of each sample when it is not left to recognize: { [input]: f }, { [stepId]: f }.
   const formats = (data && data.formats) || {};
   const resultFormats = (data && data.resultFormats) || {};
   const vars = {};
@@ -864,7 +787,6 @@ function runFlow(flow, data, options) {
     const out = { id: step.id, index: i, type: step.type, title: String(step.title || step.serviceName || '').trim(), status: 'done', lines: [] };
     report.steps.push(out);
     if (report.ended) { out.status = 'notReached'; continue; }
-    // Its branches, outermost first.
     const path = step.in ? pathOf(step.in, fragments) : [];
     let skip = null;
     for (const entry of path) {
@@ -904,9 +826,6 @@ function runFlow(flow, data, options) {
     const first = splitPath(t)[0].name;
     const outName = outputName(step);
     let full = t;
-    // A step whose result is one value (a text, a number) keeps the names
-    // its statements use on the way as they are: a single value has no
-    // fields to put them under.
     const single = step && step.output && !(step.output.fields || []).length && String(step.output.type || '').trim();
     if (!Object.prototype.hasOwnProperty.call(vars, first) && outName && first !== outName && !single) full = outName + '.' + t;
     writeAt(vars, full, clone(value), [], new Set());
@@ -946,8 +865,6 @@ function runFlow(flow, data, options) {
         const element = runRows(o.entries, sc, ctx, [], []);
         const bad = element.rows.find((x) => x.code);
         if (bad) throw new RunError(bad.code, bad.params);
-        // The list as kept so far — read where writeVar puts it (a list of
-        // one element must not read as that element).
         const outName = outputName(step);
         const single = step.output && !(step.output.fields || []).length && String(step.output.type || '').trim();
         const first = splitPath(name)[0].name;
@@ -981,7 +898,6 @@ function runFlow(flow, data, options) {
         continue;
       }
       if (o.kind === 'decide') {
-        // A result picked as a mapping row's value is worked out as one.
         const decided = (result, text) => {
           if (result && (String(result.from || '').trim() || typeof result.value === 'string' || String(result.transform || '').trim())) {
             const got = runRows([Object.assign({}, result, { to: 'v' })], sc, ctx, [], []);
@@ -1098,8 +1014,6 @@ function runFlow(flow, data, options) {
   return report;
 }
 
-// The steps that take their result from outside and have none for the run:
-// what to paste.
 function stepsNeedingResults(flow) {
   return (flow.steps || []).filter((s) => DATA_STEPS.indexOf(s.type) >= 0)
     .map((s) => ({ id: s.id, title: String(s.title || s.serviceName || '').trim(), type: s.type, name: outputName(s),

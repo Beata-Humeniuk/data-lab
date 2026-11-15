@@ -1,4 +1,0 @@
-{
-  "description": "Przykładowe dane w dowolnym formacie (JSON, XML, YAML, CSV, klucz=wartość) i ich przekształcenia krok po kroku — filtrowanie, sortowanie, łączenie, porównywanie, wyliczanie — z wynikiem każdego kroku jako tabelą.",
-  "command.open.title": "DataLab: Otwórz laboratorium"
-}

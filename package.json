@@ -2,40 +2,77 @@
   "name": "data-lab",
   "displayName": "DataLab",
   "description": "%description%",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "publisher": "beatahumeniuk",
-  "license": "MIT",
   "icon": "media/icon.png",
+  "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Beata-Humeniuk/data-lab"
+    "url": "https://github.com/Beata-Humeniuk/data-lab.git"
+  },
+  "homepage": "https://github.com/Beata-Humeniuk/data-lab#readme",
+  "bugs": {
+    "url": "https://github.com/Beata-Humeniuk/data-lab/issues"
   },
   "engines": {
     "vscode": "^1.80.0"
   },
   "categories": [
+    "Data Science",
     "Other"
   ],
+  "keywords": [
+    "json",
+    "xml",
+    "yaml",
+    "csv",
+    "transform",
+    "sample data",
+    "table",
+    "mapping"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true,
+      "restrictedConfigurations": [
+        "dataLab.labsFolder"
+      ]
+    }
+  },
   "main": "./out/extension.js",
   "activationEvents": [],
   "contributes": {
+    "configuration": {
+      "title": "DataLab",
+      "properties": {
+        "dataLab.labsFolder": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "markdownDescription": "%config.labsFolder.description%"
+        }
+      }
+    },
     "commands": [
       {
         "command": "dataLab.open",
         "title": "%command.open.title%",
+        "category": "DataLab",
         "icon": "$(beaker)"
       }
     ]
   },
   "scripts": {
-    "build": "node esbuild.mjs",
-    "package": "npm run build && npx --yes --loglevel=error @vscode/vsce@2.32.0 package --no-dependencies",
-    "test": "node test/nls-test.js && node test/sample-formats-test.js && node test/data-pipeline-test.js && node test/lab-pick-test.js && node test/lab-view-smoke-test.js && node test/theme-scheme-test.js"
+    "build": "esbuild src/extension.js --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --minify --charset=utf8",
+    "vscode:prepublish": "npm run build",
+    "test": "node test/nls-test.js && node test/sample-formats-test.js && node test/data-pipeline-test.js && node test/flatten-test.js && node test/lab-pick-test.js && node test/labs-folder-test.js && node test/lab-view-smoke-test.js && node test/theme-scheme-test.js",
+    "package": "npm run build && vsce package --no-dependencies"
   },
   "dependencies": {
     "js-yaml": "^4.1.0"
   },
   "devDependencies": {
-    "esbuild": "^0.23.0"
+    "@vscode/vsce": "3.9.2",
+    "esbuild": "^0.21.5"
   }
 }

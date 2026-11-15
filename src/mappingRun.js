@@ -1,31 +1,9 @@
-// A mapping run on real data (owner's ask, 2026-11-15: „chcę móc wgrać
-// konkretny przykład XML lub JSON z wypełnionymi danymi i robić
-// przekształcenia, żeby mi na wyjściu wyszły elementy po przekształceniu").
-//
-// Each source gets a sample document (JSON or XML, as pasted or read from a
-// file); every mapping row is read from it by its `from` path, its
-// `transform` is evaluated, its `whenNull` applied when the value is
-// missing, and the value lands at its `to` path of the output document.
-// What the run cannot read — a function it does not know, a missing-data
-// rule in free words — it says per row and writes nothing for it: a guess
-// would show data the service never sends.
-//
-// Pure: no vscode, no file system; the host feeds texts in and shows what
-// comes out.
-
 const { typeInfo } = require('./mapCore');
-
-// --- reading a sample ---------------------------------------------------
 
 function isPlainObject(v) { return v !== null && typeof v === 'object' && !Array.isArray(v) && !v.__t; }
 
-// Reading a sample — JSON, XML, YAML, CSV, key=value — lives in
-// sampleFormats.js; this module walks what it gives.
 const { parseSample } = require('./sampleFormats');
 
-// --- paths ----------------------------------------------------------------
-
-// "Tag[0]" → { name: 'Tag', index: 0 }; "TagList[]" → { name: 'TagList' }.
 function splitPath(p) {
   return String(p || '').split('.').filter((s) => s !== '').map((seg) => {
     const m = seg.match(/^(.*?)\[(\d*)\]$/);
@@ -42,9 +20,6 @@ function childOf(value, name) {
   return undefined;
 }
 
-// Every value the path reaches, with the list positions crossed on the way
-// ({ value, idx: [i, j…] }) — a row inside a list yields one value per
-// element, so the output list gets the same elements.
 function walk(value, segs, i, idx, out) {
   if (value === undefined) return;
   if (Array.isArray(value)) {
@@ -63,18 +38,12 @@ function walk(value, segs, i, idx, out) {
   walk(next, segs, i + 1, idx, out);
 }
 
-// Contract fields carry a root the document itself may lack: a JSON
-// contract names its root after the schema ("Customer.id", "response.id"),
-// a flow model after the model ("klient.taxId"). When every field of the
-// source shares one first segment and the sample has nothing of that name
-// at its top, the paths are read from below it.
 function sharedRoot(fields) {
   let root = null;
   for (const f of fields || []) {
     const segs = splitPath(f.path);
     const first = segs[0];
     if (!first) continue;
-    // A field with nothing under its first segment is a field, not a root.
     if (segs.length < 2) return null;
     if (root === null) root = first.name;
     else if (root !== first.name) return null;
@@ -83,7 +52,6 @@ function sharedRoot(fields) {
 }
 function skipFor(sampleValue, root) {
   if (!root) return 0;
-  // A list (CSV rows, a JSON array): its elements carry the fields.
   const probe = Array.isArray(sampleValue) ? sampleValue.find((x) => x !== null && x !== undefined) : sampleValue;
   return childOf(probe, root) === undefined ? 1 : 0;
 }
@@ -95,8 +63,6 @@ function resolveIn(sample, path, skip) {
   walk(sample, segs, 0, [], out);
   return out;
 }
-
-// --- values ---------------------------------------------------------------
 
 function pad(n, w) { const s = String(Math.abs(n)); return (n < 0 ? '-' : '') + '0'.repeat(Math.max(0, w - s.length)) + s; }
 
@@ -142,8 +108,6 @@ function truthy(v) {
   if (typeof v === 'string') return !/^(false|0|)$/i.test(v.trim());
   return !!v;
 }
-
-// --- date patterns (Java-style: yyyy MM dd HH mm ss SSS, 'literal') -------
 
 const PATTERN_TOKEN = /'[^']*'|yyyy|uuuu|yy|MM|M|dd|d|HH|H|mm|m|ss|s|SSS|./g;
 
@@ -231,18 +195,8 @@ function nowParts(clock) {
   return { y: t.getFullYear(), M: t.getMonth() + 1, d: t.getDate(), H: t.getHours(), m: t.getMinutes(), s: t.getSeconds(), S: 0 };
 }
 
-// --- the expression language of `transform` -------------------------------
-// The conversions the compatibility popup writes (mapCore.conversionPresets)
-// and the usual free expressions: calls, a method call (today().at(x)),
-// ?:, comparisons, + - * /, literals, and names — `x` or the source field's
-// own name is the value being mapped, any other name a field of the
-// samples.
-
 function tokenize(src) {
   const out = [];
-  // A date pattern carries its own quotes ('yyyy-MM-dd'T'HH:mm:ss'): inside
-  // a single-quoted text a quote closes it only where an expression could
-  // go on — before , ) } : ? or an operator, or at the end.
   src = String(src).replace(/'((?:[^']|'(?![\s]*(?:[,)}:?+\-*/%<>=!&|]|$)))*)'/g, (m, body) => "'" + body.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'");
   const re = /\s+|(\d+(?:\.\d+)?)|'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|([\p{L}_$@#][\p{L}\p{N}_$@#]*)|(==|!=|<=|>=|&&|\|\||->|→|[?:()+\-*/%<>!,.\[\]{}])/gu;
   let m;
@@ -319,8 +273,6 @@ function parseExpression(src) {
       if (tk.v === 'true') return { k: 'lit', v: true };
       if (tk.v === 'false') return { k: 'lit', v: false };
       if (tk.v === 'null') return { k: 'lit', v: null };
-      // A dotted name is a path ("klient.taxId", "Tag[0].Tag"); a dot
-      // before a call is a method call, read in postfix().
       let name = tk.v;
       for (;;) {
         if (peek('[') && toks[p + 1] && toks[p + 1].t === 'num' && toks[p + 2] && toks[p + 2].t === 'op' && toks[p + 2].v === ']') {
@@ -340,7 +292,6 @@ function parseExpression(src) {
   return tree;
 }
 
-// "valueMap(status) { A→X, B→Y }": the table trails the call.
 function splitValueTable(transform) {
   const text = String(transform || '').trim();
   const m = text.match(/^([\s\S]*?valueMap\s*\([\s\S]*?\))\s*\{([\s\S]*)\}\s*$/);
@@ -416,8 +367,6 @@ const FUNCTIONS = {
   },
   utf8Bytes: (a) => ({ __t: 'bytes', bytes: Array.from(Buffer.from(textOf(a), 'utf8')) })
 };
-// Functions whose result depends on the moment or on chance: the run shows
-// one possible value, and says so.
 const VOLATILE = { today: true, now: true, uuid: true, randomUUID: true };
 
 function evalNode(node, env) {
@@ -477,10 +426,6 @@ function evalNode(node, env) {
   throw new RunError('syntax', { text: '' });
 }
 
-// --- missing data -------------------------------------------------------
-// The texts the popup writes ("pomiń pole", "domyślnie: ''", "odrzuć
-// komunikat…", and their English forms) plus null; anything else is free
-// words the run does not interpret.
 function readWhenNull(text) {
   const t = String(text || '').trim();
   if (!t) return { kind: 'none' };
@@ -492,11 +437,6 @@ function readWhenNull(text) {
   return { kind: 'unknown' };
 }
 
-// --- the output document --------------------------------------------------
-
-// Where the target's lists are: what the contract says (listAt), what the
-// target's own sample shows (an array on the way), and — for a field that
-// only says it repeats — the field itself.
 function targetLists(target) {
   const lists = new Set();
   const fields = (target && target.fields) || [];
@@ -525,11 +465,6 @@ function collectArrays(v, prefix, lists, xml) {
   for (const k of Object.keys(v)) collectArrays(v[k], prefix ? prefix + '.' + k : k, lists, xml);
 }
 
-// Writes one value at a target path. `idx` are the source list positions
-// the value came from, spent on the target's lists from the outside in; a
-// list position the target has no list for takes only the first element
-// (a list into one field — mapCore.fieldVerdict). Returns false when the
-// value was not written for that reason.
 function writeAt(doc, path, value, idx, lists) {
   const segs = splitPath(path);
   const listLevels = [];
@@ -558,8 +493,6 @@ function writeAt(doc, path, value, idx, lists) {
   return true;
 }
 
-// A value as the target field types it: in JSON a number stays a number, a
-// yes/no a boolean; dates and bytes as text in both formats.
 function typed(value, type, format) {
   if (value === null || value === undefined) return null;
   if (isDate(value) || isBytes(value)) return textOf(value);
@@ -610,12 +543,8 @@ function toXml(name, v, indent, out) {
   out.push(indent + '</' + tag + '>');
 }
 
-// The output formats a result is written in (owner, 2026-11-15: „chcę móc
-// wybrać, jaki będzie format zwróconych danych").
 const OUTPUT_FORMATS = ['json', 'xml', 'yaml', 'properties'];
 
-// key=value lines: a nested field as a dotted key, a list element by its
-// position (`lines[0].sku`) — the same form the key=value reader nests.
 function propEscapeKey(k) { return String(k).replace(/\\/g, '\\\\').replace(/([ :=#!])/g, '\\$1'); }
 function propEscapeValue(v) {
   return String(v).replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/\t/g, '\\t').replace(/^ /, '\\ ');
@@ -646,7 +575,6 @@ function serialize(doc, format, rootName) {
     const keys = isPlainObject(doc) ? Object.keys(doc) : [];
     if (keys.length === 1 && !Array.isArray(doc[keys[0]])) toXml(keys[0], doc[keys[0]], '', lines);
     else if (Array.isArray(doc)) {
-      // One root element holds the list: an XML document has one root.
       lines.push('<' + xmlName(rootName || 'root') + '>');
       doc.forEach((x) => toXml('item', x, '  ', lines));
       lines.push('</' + xmlName(rootName || 'root') + '>');
@@ -658,29 +586,11 @@ function serialize(doc, format, rootName) {
   return JSON.stringify(doc === undefined ? null : doc, null, 2) + '\n';
 }
 
-// How the target's root reads in a document: an XML contract (XSD/WSDL)
-// names its root element, a JSON contract (OpenAPI, JSON Schema, Avro, a
-// Java class) adds the schema's name above the fields, a target read from a
-// sample has no root of its own.
 function targetRootMode(target) {
   if (target && target.fromSample) return 'none';
   return /WSDL|XSD|SOAP/i.test(String(target && target.kind || '')) ? 'element' : 'synthetic';
 }
 
-// --- the run ------------------------------------------------------------
-
-// input: {
-//   target: { name, kind, fields, fromSample?, sample? },
-//   sources: [{ id, name, fields }],
-//   samples: { [sourceId]: text },
-//   mappings: { [targetPath]: { sourceId, path, transform, whenNull } },
-//   extra: [{ to, value?, values?, transform? }] — constants and computed rows,
-//   format: 'json' | 'xml' (default: XML for an XML target or XML samples),
-//   ignoreTransforms: [texts that mean "no conversion"]
-// }
-// → { ok, format, text, doc, rows: [{ to, from, transform, whenNull, status,
-//      inputs, outputs, code, params }], sampleErrors: { [sourceId]: code },
-//      counts }
 function runMapping(input, options) {
   const opts = options || {};
   const target = input.target || { fields: [] };
@@ -718,8 +628,6 @@ function runMapping(input, options) {
     if (!p) return null;
     return resolveIn(p.value, path, p.skip);
   }
-  // A name inside an expression: a field of the samples, by its path as
-  // the mapping writes it.
   function lookupAny(name, own) {
     const order = own ? [own].concat(sources.filter((s) => s !== own)) : sources;
     for (const s of order) {
@@ -771,8 +679,6 @@ function runMapping(input, options) {
     row.outputs.push(textOf(v));
   }
 
-  // Shorter target paths first: a whole object lands before the fields set
-  // apart inside it, which then win.
   const entries = Object.keys(input.mappings || {}).map((to) => Object.assign({ to }, input.mappings[to]))
     .filter((m) => String(m.path || '').trim())
     .sort((a, b) => splitPath(a.to).length - splitPath(b.to).length);
@@ -791,8 +697,6 @@ function runMapping(input, options) {
     if (!hits.length) { applyMissing(row, row.whenNull, m.to, []); continue; }
     const toPlain = plainPath(m.to);
     if (m.how && m.how.kind) {
-      // A way picked from the "+ ƒ" list: executed as the flow run does,
-      // once for the row, over this source's sample.
       try {
         const p = parsed[owner.id];
         const root = sharedRoot(owner.fields);
@@ -815,8 +719,6 @@ function runMapping(input, options) {
     let written = 0;
     for (const h of hits) {
       if (whole) {
-        // An object picked whole: the target's fields under it, filled from
-        // the fields of the same names below the source object.
         row.inputs.push(isPlainObject(h.value) ? '{…}' : textOf(h.value));
         for (const f of target.fields || []) {
           const fp = plainPath(f.path);
@@ -862,7 +764,6 @@ function runMapping(input, options) {
     } else if (!written && row.status === 'ok' && hits.length) row.status = 'firstOnly';
   }
 
-  // Constants and computed rows (a new UUID, today's date): no source field.
   for (const e of input.extra || []) {
     const to = String(e.to || '').trim();
     if (!to) continue;
@@ -907,9 +808,6 @@ function runMapping(input, options) {
   };
 }
 
-// An expression evaluated against any names: `lookup(name)` gives a
-// value or throws RunError('unknownName'). The flow run uses it for its
-// statements; `x` is not special here.
 function evalExpr(text, lookup, options) {
   const opts = options || {};
   const split = splitValueTable(text);

@@ -42,8 +42,6 @@ runChecks([
   [p('bez').result === 2 && p('zKwota').result === 240, 'without a match, with its match attached and summed']
 ]);
 
-// Not only lists (owner, 2026-11-15: „nie tylko na listach się operuje"):
-// an object and a single value transformed too.
 {
   const json = '{"klient":{"imie":"ala","nazwisko":"Nowak","urodzony":"1990-02-28","adres":{"miasto":"Gdańsk"}},"pozycje":[{"sku":"A","ilosc":"2"},{"sku":"B","ilosc":"3"}],"kanal":"www"}';
   const d = { inputs: [{ name: 'zam', text: json }, { name: 'stawki', text: 'vat=23' }], pipelines: [
@@ -72,8 +70,6 @@ runChecks([
   ]);
 }
 
-// A field some elements lack is no value there, not an unknown name; „≠
-// null" keeps the elements with a value.
 {
   const xml = '<Lista><Poz><kod>A</kod><typ>1</typ></Poz><Poz><kod>B</kod></Poz><Poz><kod>C</kod><typ>3</typ></Poz><Poz><kod>D</kod><typ></typ></Poz></Lista>';
   const d = { inputs: [{ name: 'l', text: xml }], pipelines: [
@@ -94,7 +90,6 @@ runChecks([
   ]);
 }
 
-// A word in a parameter stays the word, also over a list's elements.
 {
   const d = { inputs: [{ name: 'l', text: '[{"a":""},{"a":"x"}]' }], pipelines: [
     { name: 'w', source: 'l', steps: [{ kind: 'change', field: 'a', how: { kind: 'ifEmpty', value: 'brak' } }] }] };
@@ -102,7 +97,6 @@ runChecks([
   runChecks([[JSON.stringify(r4.pipelines[0].result) === '[{"a":"brak"},{"a":"x"}]', 'when empty → a word: the word']]);
 }
 
-// Two lists merged by several fields, and one appended to the other.
 {
   const d = { inputs: [
     { name: 'umowy', text: '<U><Umowa><nr>1</nr><kl>A</kl><typ>L</typ></Umowa><Umowa><nr>2</nr><kl>B</kl><typ>K</typ></Umowa><Umowa><nr>3</nr><kl>C</kl><typ>L</typ></Umowa></U>' },
@@ -121,8 +115,6 @@ runChecks([
   ]);
 }
 
-// Objects merge too; fields removed; a new field worked out of others, put
-// together, written as an expression, or taken from elsewhere.
 {
   const d = { inputs: [
     { name: 'kl', text: '{"klient":{"id":"K1","imie":"ala","nazwisko":"Nowak","adres":{"miasto":"Gdańsk"}},"kanal":"www"}' },
@@ -152,7 +144,7 @@ runChecks([
     [res('zObiektem').marketing === true && res('zObiektem').id === 'K1' && res('zObiektem').id_zgody === 'Z9', 'an object merged with an object: its fields in, a clash as <field>_<other>'],
     [res('zLista').ocena === 'A' && !('klient' in res('zLista')), 'an object merged with the matching element of a list'],
     [res('listaZObiektem').length === 2 && res('listaZObiektem').every((x) => x.miasto === 'Gdańsk'), 'a list merged with an object: its fields in every element'],
-    [!('nazwisko' in res('bezPol')) && res('bezPol').adres && !('miasto' in res('bezPol').adres) && res('bezPol').imie === 'ala', 'fields removed from an object, nested too'],
+    [!('nazwisko' in res('bezPol')) && !('adres' in res('bezPol')) && res('bezPol').imie === 'ala', 'fields removed from an object, nested too; the emptied object goes with them'],
     [res('listaBez').every((x) => !('rabat' in x) && 'cena' in x), 'a field removed from every element'],
     [res('nowe').pelne === 'ala Nowak' && res('nowe').duze === '>ALA' && res('nowe').kanal === 'www' && res('nowe').opis === 'Nowak z Gdańsk / www', 'a new field: put together, worked out (chained), from elsewhere, an expression'],
     [!q('wartosc').steps[0].error && String(res('wartosc')[1].razem) === '9', 'an expression over the fields of each element: ' + JSON.stringify(res('wartosc'))],
@@ -162,7 +154,6 @@ runChecks([
   ]);
 }
 
-// "Element o indeksie" counts from 0, like the tables; out of the list — none.
 {
   const d = { inputs: [{ name: 'l', text: 'k;v\nA;1\nB;2\nC;3' }], pipelines: [
     { name: 'i0', source: 'l', steps: [{ kind: 'nth', index: '0' }] },

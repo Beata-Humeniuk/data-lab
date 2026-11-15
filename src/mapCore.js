@@ -9,28 +9,12 @@ function norm(s) {
     .replace(/[_\-\s]/g, '');
 }
 
-// --- the type engine ----------------------------------------------------
-// One field type can come from five worlds: a JSON/OpenAPI contract
-// ("string:date-time", "integer:int64"), an XSD/WSDL ("dateTime",
-// "base64Binary", "positiveInteger"), an Avro schema ("long",
-// "timestamp-millis", "bytes"), a Java model typed by hand ("BigDecimal",
-// "LocalDate", "byte[]"), a database schema ("VARCHAR2(30)", "NUMBER(10,2)",
-// "TIMESTAMP"). Every one is read into the same fine-grained family
-// (typeInfo), the families fold into the coarse groups the mapping status
-// has always used (typeGroup), and a pair of families says whether a value
-// crosses as is, needs a conversion, or cannot cross at all (checkTypes) —
-// and which ready-made conversions fit (conversionPresets).
-
 const FAMILY_TO_GROUP = {
   integer: 'num', decimal: 'num', boolean: 'bool', timestamp: 'ts',
   date: 'strdate', datetime: 'strdate', time: 'strdate',
   enum: 'enum', bytes: 'bytes', uuid: 'str', string: 'str', unknown: 'str'
 };
 
-// The bare name of a type: namespace prefix, generics, precision and
-// nullability marks stripped, case folded. "xs:dateTime" → "datetime",
-// "VARCHAR2(30 CHAR)" → "varchar2", "java.time.LocalDate" → "localdate",
-// "List<String>" → "string" (the element is what maps).
 function bareTypeName(t) {
   let s = String(t || '').trim();
   s = s.replace(/\?$/, '').replace(/^\?/, '');
@@ -50,18 +34,14 @@ function familyOf(bare, raw) {
   const s = bare;
   const original = String(raw || '').trim();
   if (/^enum(\[|$)/i.test(original) || s === 'enum') return 'enum';
-  // NUMBER(10), NUMERIC(8), DECIMAL(12,0): a database number with no scale is a whole number.
   if (/^(number|numeric|decimal)\s*\(\s*\d+\s*(,\s*0\s*)?\)$/i.test(original)) return 'integer';
-  // java.util.Date carries a time of day (java.sql.Date does not); the
-  // package is what tells them apart, so it is read before it is stripped.
   if (/^java\.util\.Date$/.test(original) || /^(java\.sql\.)?Timestamp$/.test(original)) return 'datetime';
   if (/^(string|str):(date-time|datetime)$/.test(s) || /^(datetime|datetime2|smalldatetime|localdatetime|zoneddatetime|offsetdatetime|instant|timestamp tz)$/.test(s)) return 'datetime';
-  if (s === 'timestamp' && /^timestamp$/i.test(original.replace(/\(.*$/, '').trim()) && /[A-Z]/.test(original)) return 'datetime'; // DB TIMESTAMP
+  if (s === 'timestamp' && /^timestamp$/i.test(original.replace(/\(.*$/, '').trim()) && /[A-Z]/.test(original)) return 'datetime';
   if (/^timestamp-(millis|micros|nanos)$/.test(s) || /^local-timestamp/.test(s) || /^(timestamp|epoch|epochmillis|epochseconds|unixtime|unix_timestamp)$/.test(s)) return 'timestamp';
   if (/^(string|str):date$/.test(s) || /^(date|localdate|gyearmonth|gyear|gmonthday)$/.test(s)) return 'date';
   if (/^(string|str):(time|partial-time)$/.test(s) || /^(time|localtime|time-millis|time-micros)$/.test(s)) return 'time';
   if (/^(boolean|bool|bit)$/.test(s)) return 'boolean';
-  // Swagger 2's `type: file` (a downloaded file) is bytes as well.
   if (/^(string|str):(byte|binary|base64)$/.test(s) || /^(bytes|byte\[\]|base64binary|hexbinary|blob|raw|long raw|bytea|varbinary|binary|image|fixed|file)$/.test(s)) return 'bytes';
   if (/^(string|str):uuid$/.test(s) || /^(uuid|uniqueidentifier|guid)$/.test(s)) return 'uuid';
   if (/^(integer|int):/.test(s) || /^(int|integer|int32|int64|long|short|byte|biginteger|bigint|smallint|tinyint|serial|bigserial|positiveinteger|nonnegativeinteger|negativeinteger|nonpositiveinteger|unsignedint|unsignedlong|unsignedshort|unsignedbyte|counter)$/.test(s)) return 'integer';
@@ -82,10 +62,6 @@ function systemOf(bare, raw) {
   return 'unknown';
 }
 
-// { family, group, system, bare, raw } — everything the engine knows about
-// one type string. `family` is the fine kind, `group` the coarse mapping
-// group, `system` a best guess at the world the name comes from (json,
-// xsd, avro, java, db, unknown) — shown to the analyst, never decisive.
 function typeInfo(t) {
   const raw = String(t || '');
   const bare = bareTypeName(raw);
@@ -95,8 +71,6 @@ function typeInfo(t) {
 
 function typeGroup(t) { return typeInfo(t).group; }
 
-// Two enumerations with different symbol sets are not the same type even
-// though both are enums: a value map is needed between them.
 function enumsDiffer(a, b) {
   const va = enumValues(a), vb = enumValues(b);
   if (!va.length || !vb.length) return false;
@@ -105,11 +79,6 @@ function enumsDiffer(a, b) {
   va.forEach((v) => { set[v] = true; });
   return vb.some((v) => !set[v]);
 }
-// An enumeration's values are text: an enum fills a text field as it is,
-// and so does a UUID. Otherwise the fine family decides, not the coarse group: a date, a
-// date-time and a time share a group yet a LocalDate does not fill a
-// LocalDateTime as it is, nor a decimal an integer. A whole number widens
-// into a decimal. A side with no recognisable family keeps the coarse rule.
 function compatible(a, b) {
   const fa = typeInfo(a).family, fb = typeInfo(b).family;
   if (fa === 'enum' && typeGroup(b) === 'str' && fb !== 'enum') return true;
@@ -119,8 +88,6 @@ function compatible(a, b) {
   return fa === fb || (fa === 'integer' && fb === 'decimal');
 }
 
-// The families a value can be carried between with a conversion; anything
-// else is incompatible (bytes into a date, a boolean into a timestamp).
 const CONVERTIBLE = {
   integer: ['decimal', 'string', 'boolean', 'timestamp', 'enum'],
   decimal: ['integer', 'string'],
@@ -136,10 +103,6 @@ const CONVERTIBLE = {
   unknown: []
 };
 
-// The verdict on one pair of types: 'same' (nothing to do), 'convertible'
-// (a conversion is needed and presets exist), 'incompatible' (no known
-// conversion — only a hand-written rule can bridge it), 'unknown' (one side
-// has no recognisable type; the analyst decides).
 function checkTypes(from, to) {
   const a = typeInfo(from), b = typeInfo(to);
   let level;
@@ -156,12 +119,6 @@ function checkTypes(from, to) {
   return { level, ok: level === 'same', lossy, from: a, to: b, presets: conversionPresets(from, to) };
 }
 
-// Ready-made conversions for a pair of types: { id, labelKey, template,
-// params: [{ name, labelKey, default }], table }. The template is the text
-// that lands in the mapping's `transform`, with {x} for the source field and
-// {name} for each parameter — plain words a developer reads as intent, not
-// code in any one language. A `table` preset is a value map (source value →
-// target value) the view collects as rows.
 function conversionPresets(from, to) {
   const a = typeInfo(from).family, b = typeInfo(to).family;
   const out = [];
@@ -219,8 +176,6 @@ function conversionPresets(from, to) {
   return out;
 }
 
-// The transform text a preset yields for the given field and parameters;
-// a value map renders its rows as "valueMap(x) { A→1, B→2 }".
 function renderPreset(preset, sourceLeaf, params, rows) {
   let text = preset.template.replace(/\{x\}/g, sourceLeaf || 'x');
   (preset.params || []).forEach((p) => {
@@ -235,17 +190,11 @@ function renderPreset(preset, sourceLeaf, params, rows) {
   return text;
 }
 
-// The symbols of an enum type string: "enum[NEW,CONFIRMED]" → [NEW, CONFIRMED].
 function enumValues(t) {
   const m = String(t || '').match(/^enum\[(.*)\]$/i);
   return m ? m[1].split(',').map((v) => v.trim()).filter(Boolean) : [];
 }
 
-// The flow's mapping rows ({ from, to, transform, whenNull }) and the view's
-// mapping table ({ targetPath: { sourceId, path, transform, whenNull } })
-// are the same facts in two shapes; `from` is a field path the sources
-// carry (a model reference like "klient.taxId" or a contract path), so a
-// row resolves to the first source that has the path.
 function entriesToMappings(entries, sources) {
   const out = {};
   (entries || []).forEach((e) => {
@@ -257,23 +206,13 @@ function entriesToMappings(entries, sources) {
       if (s.fields.some((f) => f.path === from)) { owner = s; break; }
     }
     out[to] = { sourceId: owner ? owner.id : '', path: from, transform: String(e.transform || ''), whenNull: String(e.whenNull || '') };
-    // The analyst's remark on the field rides along, so the canvas never
-    // drops it.
     if (String(e.note || '').trim()) out[to].note = String(e.note);
-    // A way picked from the "+ ƒ" list rides along: the canvas and the
-    // sample run keep it, the save hands it back.
     if (e.how && typeof e.how === 'object') out[to].how = e.how;
-    // A condition of its own (when the field is filled in) rides along too.
     if (e.when && typeof e.when === 'object') out[to].when = e.when;
   });
   return out;
 }
 
-// The canvas shows a row only when it has a `from`: a constant row
-// ({ to, value }) and a hand-filled row (no from, a transform) never reach
-// it, so when its rows come back they must not take those along. The canvas
-// rows lead, in the canvas (target) order; the rows it could not show stay,
-// unless the canvas now maps that very target.
 function mergeCanvasEntries(existing, canvasEntries) {
   const rows = (canvasEntries || []).filter((e) => e && String(e.to || '').trim());
   const mapped = {};
@@ -298,11 +237,6 @@ function mappingsToEntries(mappings, order) {
   }).filter((e) => e.from);
 }
 
-// cardWords and reasonText are the DOCUMENT layer: Polish sentences for the
-// generated .mapping.md (the endpoint documents read in Polish, DECISIONS
-// §29). The mapping view does NOT use them — it renders its own equivalents
-// through the UI catalog (src/nls.js), so the panel follows the editor
-// language while the export stays what it was.
 function cardWords(f) {
   const parts = [f.min > 0 ? 'wymagane' : 'opcjonalne'];
   if (f.max === '*') parts.push('lista');
@@ -324,23 +258,11 @@ function findSourceField(sources, m) {
   return out;
 }
 
-// A list going into a single field: no element named = the first element
-// (owner, 2026-11-02: „Jeśli nie wskazuje który element listy powinni brać
-// zawsze domyślnie pierwszy"). A fact, never a gap — the one rule every
-// view, status and export asks.
 function listToOne(sf, tf) {
   return !!sf && !!tf && sf.max === '*' && tf.max !== '*';
 }
 
-// What a source field going into a target field still lacks — the one
-// rule for every table, row message and export: a different type with no
-// transformation said, an empty source into a required field with no
-// rule. Language-free facts; each layer words them itself.
 function fieldVerdict(sf, tf, m) {
-  // One named type on both sides: a field typed by a name (a class not
-  // read, "AccountStatus") and a contract's value of that named type (its
-  // $ref → typeName, written out as enum[…]) — the same type (owner,
-  // 2026-11-02: „skoro w swaggerze mam przecież nazwę tego enuma").
   const plain = (t) => String(t || '').replace(/\[\]$/, '').trim();
   const nameOf = (f) => String((f && f.typeName) || '').trim();
   const sameNamed = (nameOf(tf) && (plain(sf.type) === nameOf(tf) || nameOf(sf) === nameOf(tf))) || (nameOf(sf) && plain(tf.type) === nameOf(sf));
@@ -355,9 +277,6 @@ function fieldVerdict(sf, tf, m) {
   };
 }
 
-// Language-free facts only: which gap it is (typeBad, needTransform,
-// needNull) plus the source field itself — each rendering layer (the md
-// export in Polish, the view through the UI catalog) words them itself.
 function evaluateField(t, m, sources) {
   const sf = findSourceField(sources, m);
   if (!sf) return { key: t.min > 0 ? 'missing' : 'unmapped' };
@@ -464,9 +383,6 @@ function autoMapCandidates(targetFields, sources, mappings) {
   return found;
 }
 
-// The type engine's tables, as page source: every webview that receives
-// the engine's functions (the mapping view, the flow designer) receives
-// these with them, so both judge a type the same way.
 function typeConstantsSource() {
   return [
     'const FAMILY_TO_GROUP = ' + JSON.stringify(FAMILY_TO_GROUP) + ';',
@@ -476,7 +392,6 @@ function typeConstantsSource() {
   ].join('\n');
 }
 
-// The type engine and the one field rule, keyed by the name a page calls.
 const TYPE_ENGINE_INJECTABLE = {
   typeGroup, bareTypeName, familyOf, systemOf, typeInfo, enumsDiffer, enumValues,
   compatible, listToOne, fieldVerdict
