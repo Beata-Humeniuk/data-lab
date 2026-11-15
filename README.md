@@ -108,6 +108,22 @@ You can start from:
 - A nested structure within an input.
 - The named result of a previous transformation.
 
+### Reuse Named Results
+
+Give a transformation a **result name** to save its result as a collection of
+the lab. A named result:
+
+- Can be the source of any other transformation in the lab, also one placed
+  above it, and can be used wherever another list or input is picked (Merge,
+  Compare, Append, Add field from another input, expressions).
+- Offers its nested lists and objects as sources too, for example
+  `orders.lines`.
+- Is listed under **Results** on the left; select it to inspect it as a table.
+- Always reflects the current inputs and steps.
+
+A result name must differ from the input names and the other result names. A
+transformation cannot use a result that is built from its own result.
+
 Add operations one step at a time. Available operations automatically adapt to
 the current data type.
 

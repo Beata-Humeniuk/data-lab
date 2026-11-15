@@ -47,10 +47,15 @@ function listsIn(value, base, out, depth) {
 
 function kindOf(v) { return Array.isArray(v) ? 'list' : isPlainObject(v) ? 'object' : 'value'; }
 
-function sourcesOf(values, pipelines, upTo, resultKinds) {
+function sourcesOf(values, results) {
   const out = [];
   const seen = new Set();
-  const add = (path, kind, count) => { if (path && !seen.has(path) && out.length < 400) { seen.add(path); out.push({ path, kind, count }); } };
+  let fromResult = false;
+  const add = (path, kind, count) => {
+    if (!path || seen.has(path) || out.length >= 400) return;
+    seen.add(path);
+    out.push(fromResult ? { path, kind, count, result: true } : { path, kind, count });
+  };
   const walk = (v, path, depth) => {
     if (depth > 8) return;
     if (Array.isArray(v)) {
@@ -69,11 +74,64 @@ function sourcesOf(values, pipelines, upTo, resultKinds) {
     add(path, 'value', null);
   };
   for (const name of Object.keys(values)) walk(values[name], name, 0);
-  (pipelines || []).slice(0, upTo === undefined ? undefined : upTo).forEach((pl, i) => {
-    const n = String(pl.name || '').trim();
-    if (n) add(n, (resultKinds || {})[n] || 'list', null);
-  });
+  fromResult = true;
+  for (const r of Array.isArray(results) ? results : []) if (r && r.name) walk(r.value, r.name, 0);
   return out;
+}
+
+const NAME_IN_EXPR = /[\p{L}_][\p{L}\p{N}_]*/gu;
+function headOf(path) { return String(path || '').trim().split('.')[0]; }
+function refsOf(p) {
+  const out = new Set();
+  const addPath = (x) => { const h = headOf(x); if (h) out.add(h); };
+  addPath(p.source);
+  for (const s of p.steps || []) {
+    if (!s || typeof s !== 'object') continue;
+    addPath(s.other);
+    if (s.from === 'input') addPath(s.path);
+    if (s.from === 'expr') for (const m of String(s.expr || '').match(NAME_IN_EXPR) || []) out.add(m);
+  }
+  return out;
+}
+function resultNames(inputNames, pipelines) {
+  const owner = new Map();
+  const errors = [];
+  pipelines.forEach((p, i) => {
+    const n = String(p.name || '').trim();
+    if (!n) return;
+    if (inputNames.has(n) || owner.has(n)) { errors[i] = { code: 'nameTaken', params: { name: n } }; return; }
+    owner.set(n, i);
+  });
+  return { owner, errors };
+}
+function dependsOn(deps, owner) {
+  const memo = new Map();
+  const reach = (i) => {
+    if (memo.has(i)) return memo.get(i);
+    const seen = new Set();
+    memo.set(i, seen);
+    for (const n of deps[i]) {
+      const j = owner.get(n);
+      if (j === undefined || j === i || seen.has(j)) continue;
+      seen.add(j);
+      for (const k of reach(j)) seen.add(k);
+    }
+    return seen;
+  };
+  return reach;
+}
+function runOrder(deps, owner) {
+  const pending = deps.map((_, i) => i);
+  const done = new Set();
+  const order = [];
+  while (pending.length) {
+    let at = pending.findIndex((i) => Array.from(deps[i]).every((n) => { const j = owner.get(n); return j === undefined || j === i || done.has(j); }));
+    if (at < 0) at = 0;
+    const i = pending.splice(at, 1)[0];
+    done.add(i);
+    order.push(i);
+  }
+  return order;
 }
 
 function valueAt(root, path) {
@@ -518,13 +576,22 @@ function runDocument(doc, options) {
   const root = Object.assign({}, values);
   const out = { inputs: states, pipelines: [], inputData: {} };
   for (const n of Object.keys(values)) out.inputData[n] = view(values[n]);
-  const resultKinds = {};
+  const pipelines = doc.pipelines || [];
+  const inputNames = new Set((doc.inputs || []).map((x) => String(x.name || '').trim()).filter(Boolean));
+  const { owner, errors } = resultNames(inputNames, pipelines);
+  const deps = pipelines.map(refsOf);
+  const reach = dependsOn(deps, owner);
+  const computed = new Set();
   const colsOf = (v) => (Array.isArray(v) ? columnsOf(v) : isPlainObject(v) ? columnsOf([v]) : []);
-  (doc.pipelines || []).forEach((p, pi) => {
-    const res = { name: p.name || '', source: p.source || '', steps: [], sources: sourcesOf(values, doc.pipelines, pi, resultKinds) };
-    out.pipelines.push(res);
+  pipelines.forEach((p) => out.pipelines.push({ name: p.name || '', source: p.source || '', steps: [] }));
+  for (const pi of runOrder(deps, owner)) {
+    const p = pipelines[pi];
+    const res = out.pipelines[pi];
+    if (errors[pi]) res.nameError = errors[pi];
+    const from = owner.get(headOf(p.source));
+    if (from !== undefined && from !== pi && !computed.has(from)) { res.sourceView = null; res.error = { code: 'cycle', params: { name: headOf(p.source) } }; continue; }
     let cur = String(p.source || '').trim() ? valueAt(root, p.source) : undefined;
-    if (cur === undefined) { res.sourceView = null; return; }
+    if (cur === undefined) { res.sourceView = null; continue; }
     res.sourceView = view(cur);
     res.sourceKind = kindOf(cur);
     res.sourceColumns = colsOf(cur);
@@ -545,7 +612,17 @@ function runDocument(doc, options) {
     res.endKind = kindOf(cur);
     res.endColumns = colsOf(cur);
     res.result = cur;
-    if (String(p.name || '').trim()) { root[p.name.trim()] = cur; resultKinds[p.name.trim()] = kindOf(cur); }
+    if (owner.get(String(p.name || '').trim()) === pi) {
+      root[p.name.trim()] = cur;
+      res.resultView = view(cur);
+      computed.add(pi);
+    }
+  }
+  const results = [];
+  owner.forEach((i, name) => { if (computed.has(i)) results.push({ name, index: i, value: root[name] }); });
+  results.sort((a, b) => a.index - b.index);
+  out.pipelines.forEach((res, pi) => {
+    res.sources = sourcesOf(values, results.filter((r) => r.index !== pi && !reach(r.index).has(pi)));
   });
   out.root = root;
   return out;

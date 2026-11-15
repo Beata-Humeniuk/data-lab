@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+- Named results can be used in every transformation of the lab, not only in
+  those below them; the lab works out the order. Their nested lists and objects
+  are sources too.
+- Named results are listed under **Results** on the left and open as a table.
+- A result name taken by an input or another result, and a result built from
+  itself, are said.
+
 ## [1.1.0] - 2026-11-15
 
 - When Spec Studio is installed and the workspace has its package folder

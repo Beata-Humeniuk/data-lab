@@ -169,3 +169,30 @@ runChecks([
     [q('zle').steps[0].error && q('zle').steps[0].error.code === 'notInteger', 'a negative index is said']
   ]);
 }
+
+{
+  const zam = '{"zamowienia":[{"nr":"Z1","klient":"K1","pozycje":[{"sku":"A","ilosc":2}]},{"nr":"Z2","klient":"K2","pozycje":[{"sku":"B","ilosc":1},{"sku":"C","ilosc":4}]},{"nr":"Z3","klient":"K1","pozycje":[]}]}';
+  const d = { inputs: [{ name: 'zam', text: zam }, { name: 'klienci', text: 'id;nazwa\nK1;Ala\nK2;Ola' }], pipelines: [
+    { name: 'raport', source: 'duze', steps: [{ kind: 'merge', other: 'klienci', keys: [{ a: 'klient', b: 'id' }] }] },
+    { name: 'duze', source: 'zam.zamowienia', steps: [{ kind: 'filter', conditions: [{ field: 'nr', op: 'ne', value: 'Z3', valueKind: 'const' }] }] },
+    { name: 'pozycje', source: 'duze.pozycje', steps: [] },
+    { name: 'ile', source: 'raport', steps: [{ kind: 'add', name: 'x', from: 'expr', expr: '1' }, { kind: 'count' }] },
+    { name: 'klienci', source: 'zam', steps: [] },
+    { name: 'petla', source: 'petla2', steps: [] },
+    { name: 'petla2', source: 'petla', steps: [] }
+  ] };
+  const r6 = runDocument(d, {});
+  const q = (n) => r6.pipelines.find((x) => x.name === n);
+  const src = (n) => q(n).sources.map((x) => x.path);
+  runChecks([
+    [q('raport').result.length === 2 && q('raport').result[0].nazwa === 'Ala', 'a result used above the transformation that builds it'],
+    [q('pozycje').result.length === 3 && q('pozycje').sourceView.kind === 'list', 'a nested list of a result is a source'],
+    [q('ile').result === 2, 'a result of a result'],
+    [src('raport').indexOf('duze') >= 0 && src('raport').indexOf('duze.pozycje') >= 0 && q('raport').sources.find((x) => x.path === 'duze').result === true, 'results and their lists offered as sources, marked'],
+    [src('duze').indexOf('raport') < 0 && src('duze').indexOf('ile') < 0 && src('duze').indexOf('duze') < 0, 'no source that is built from the transformation itself'],
+    [q('ile').sources.find((x) => x.path === 'ile') === undefined && q('ile').sources.find((x) => x.path === 'raport').kind === 'list', 'a result is offered with its own kind'],
+    [q('klienci').nameError && q('klienci').nameError.code === 'nameTaken' && q('raport').result[0].nazwa === 'Ala', 'a result named like an input is said and does not hide the input'],
+    [(q('petla').error || q('petla2').error || {}).code === 'cycle', 'two results built from each other: the loop is said'],
+    [q('raport').resultView.kind === 'list' && q('raport').resultView.count === 2, 'a named result has its own view']
+  ]);
+}
