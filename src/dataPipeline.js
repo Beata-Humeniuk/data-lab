@@ -195,11 +195,19 @@ function stepsFor(kind) {
   return VALUE_ONLY_STEPS;
 }
 
+// A field an XML attribute holds (@Name) is written where it is, not next to it.
+function keyIn(node, seg) {
+  return !Object.prototype.hasOwnProperty.call(node, seg) && Object.prototype.hasOwnProperty.call(node, '@' + seg) ? '@' + seg : seg;
+}
 function setPath(obj, path, value) {
   const segs = String(path).split('.').filter(Boolean);
   let cur = obj;
-  for (let i = 0; i < segs.length - 1; i++) { if (!isPlainObject(cur[segs[i]])) cur[segs[i]] = {}; cur = cur[segs[i]]; }
-  cur[segs[segs.length - 1]] = value === undefined ? null : value;
+  for (let i = 0; i < segs.length - 1; i++) {
+    const k = keyIn(cur, segs[i]);
+    if (!isPlainObject(cur[k])) cur[k] = {};
+    cur = cur[k];
+  }
+  cur[keyIn(cur, segs[segs.length - 1])] = value === undefined ? null : value;
   return obj;
 }
 function removeAt(node, segs) {

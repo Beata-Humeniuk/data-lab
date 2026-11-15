@@ -7,6 +7,10 @@
   the md show it. The result name stays the name other transformations use;
   renaming it renames it in the transformations that use it, and a character
   a result name cannot have becomes `_` as it is typed.
+- Change column, Add field and Output fields on a field an XML attribute
+  holds (`Name="…"`) write the new value into that field; before, it went
+  into a new field next to it and the table kept showing the old value, so
+  **in capitals** or **in lowercase** looked as if it did nothing.
 - **replace a text** with nothing to find leaves the text as it is; before, it
   put the new text between every two letters.
 

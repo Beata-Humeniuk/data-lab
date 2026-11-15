@@ -228,3 +228,16 @@ runChecks([
     [JSON.stringify(q('fixed')) === '["INDV","JOIN"]', 'a fixed value, split into a list']
   ]);
 }
+
+{
+  const d = { inputs: [{ name: 'x', text: '<L><P Name="Konto Plus" Code="1"><Info Kind="a"/></P><P Name="e-Konto" Code="2"><Info Kind="b"/></P></L>' }], pipelines: [
+    { name: 'u', source: 'x.P', steps: [{ kind: 'change', field: 'Name', how: { kind: 'upper' } }, { kind: 'change', field: 'Info.Kind', how: { kind: 'upper' } }] },
+    { name: 'w', source: 'x.P', steps: [{ kind: 'change', field: 'Name', how: { kind: 'lower' } }, { kind: 'change', field: 'Name', as: 'Small', how: { kind: 'upper' } }] }
+  ] };
+  const r8 = runDocument(d, {});
+  const q = (n) => r8.pipelines.find((x) => x.name === n).result[0];
+  runChecks([
+    [JSON.stringify(q('u')) === '{"@Name":"KONTO PLUS","@Code":"1","Info":{"@Kind":"A"}}', 'an XML attribute changed where it is, nested too: ' + JSON.stringify(q('u'))],
+    [q('w')['@Name'] === 'konto plus' && q('w').Small === 'KONTO PLUS' && !('Name' in q('w')), 'in lowercase; saved as another field: a field of its own']
+  ]);
+}
