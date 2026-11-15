@@ -11,6 +11,10 @@
   holds (`Name="…"`) write the new value into that field; before, it went
   into a new field next to it and the table kept showing the old value, so
   **in capitals** or **in lowercase** looked as if it did nothing.
+- Change column with no transformation picked and a name in **save as**
+  renames the column, in its place; with a transformation, **save as** still
+  puts the result into a new column and keeps this one. A line under it says
+  which.
 - **replace a text** with nothing to find leaves the text as it is; before, it
   put the new text between every two letters.
 

@@ -205,6 +205,8 @@ const EN = {
   "dv.column": "column",
   "dv.saveAs": "save as",
   "dv.sameColumn": "the same column",
+  "dv.saveAsHint": "Empty: the column itself changes. A name: the result goes into a column of that name, and this one stays.",
+  "dv.renameHint": "No transformation picked: a name in save as renames the column.",
   "dv.transforms": "Transformations",
   "dv.help": "1. Add an input on the left and paste its data (JSON, XML, YAML, CSV, key=value) or load a file. 2. Add a transformation on the left, under Transformations, and pick what to transform: a list, an object or a field. 3. Add steps — the result of each shows right under it. 4. Save (Ctrl+S).",
   "dv.list": "list",

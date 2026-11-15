@@ -190,7 +190,7 @@ next to the algorithm.
 | Output fields | Give the output its fields: each output name taken from a column; a dot makes a nested field (`address.city`) |
 | Remove columns | Exclude selected fields |
 | Flatten | Expand nested structures |
-| Change column | Modify values in an existing field |
+| Change column | Modify values in an existing field; with no transformation and a name in **save as**, rename it |
 | Add field | Create a new field |
 | Skip / Take | Skip elements or keep the first elements |
 

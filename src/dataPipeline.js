@@ -471,6 +471,24 @@ function changed(el, step, scope, ctx) {
   const to = String(step.as || '').trim() || col;
   return setPath(clone(el), to, r.value);
 }
+// Change column with no transformation and another name: the column renamed,
+// in its place when it is a field of the element itself.
+function renamed(el, step) {
+  const from = String(step.field || '').trim();
+  const to = String(step.as || '').trim();
+  if (!from || !to || to === from || !isPlainObject(el)) return el;
+  const v = cell(el, from);
+  if (v === undefined) return el;
+  if (from.indexOf('.') < 0 && to.indexOf('.') < 0) {
+    const key = Object.prototype.hasOwnProperty.call(el, from) ? from : '@' + from;
+    const out = {};
+    for (const k of Object.keys(el)) { if (k === key) out[to] = clone(v); else if (k !== to) out[k] = clone(el[k]); }
+    return out;
+  }
+  const out = clone(el);
+  removePath(out, from);
+  return setPath(out, to, clone(v));
+}
 function picked(el, step) {
   const out = {};
   for (const c of (step.columns || []).filter((x) => String(x.from || '').trim())) {
@@ -525,7 +543,7 @@ function stepOn(cur, step, root, ctx) {
       case 'columns': return (step.columns || []).some((x) => String(x.from || '').trim()) ? picked(cur, step) : cur;
       case 'drop': return dropped(cur, step);
       case 'flatten': { const r = flattened([cur], step); return r.length === 1 ? r[0] : r; }
-      case 'change': return String(step.field || '').trim() && step.how && step.how.kind ? changed(cur, step, scope, ctx) : cur;
+      case 'change': return String(step.field || '').trim() && step.how && step.how.kind ? changed(cur, step, scope, ctx) : renamed(cur, step);
       case 'add': return String(step.name || '').trim() ? setPath(clone(cur), step.name.trim(), addedValue(step, cur, root, scope, ctx, columnsOf([cur]))) : cur;
       case 'take': { if (!String(step.field || '').trim()) return cur; const v = cell(cur, step.field); return v === undefined ? null : v; }
       case 'asList': return [cur];
@@ -556,7 +574,7 @@ function stepOn(cur, step, root, ctx) {
       return list.concat(asList(valueAt(root, step.other)).map(clone));
     }
     case 'columns': return (step.columns || []).some((x) => String(x.from || '').trim()) ? list.map((el) => picked(el, step)) : list;
-    case 'change': return String(step.field || '').trim() && step.how && step.how.kind ? list.map((el) => changed(el, step, scope, ctx)) : list;
+    case 'change': return String(step.field || '').trim() && step.how && step.how.kind ? list.map((el) => changed(el, step, scope, ctx)) : list.map((el) => renamed(el, step));
     case 'drop': return list.map((el) => dropped(el, step));
     case 'flatten': return flattened(list, step);
     case 'add': {

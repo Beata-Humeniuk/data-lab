@@ -97,7 +97,8 @@ function stepText(s, catalog) {
     case 'drop': return 'Remove the fields ' + list((s.fields || []).filter(Boolean));
     case 'flatten': return (s.field ? 'Flatten ' + code(s.field) : 'Flatten all nested objects') +
       (s.names === 'own' ? ', fields under their own names' : ', field names prefixed with the parent') + (s.keepEmpty === false ? ', elements without items left out' : '');
-    case 'change': return 'Change ' + (s.field ? code(s.field) : 'the value') + ': ' + (s.how && s.how.kind ? howText(s.how, catalog) : 'no change') +
+    case 'change': if (!(s.how && s.how.kind) && String(s.as || '').trim()) return 'Rename ' + code(s.field) + ' to ' + code(s.as);
+      return 'Change ' + (s.field ? code(s.field) : 'the value') + ': ' + (s.how && s.how.kind ? howText(s.how, catalog) : 'no change') +
       (String(s.as || '').trim() ? ', saved as ' + code(s.as) : '');
     case 'add': return addedText(s, catalog);
     case 'take': return 'Take the field ' + code(s.field);

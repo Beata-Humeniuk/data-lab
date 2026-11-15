@@ -241,3 +241,20 @@ runChecks([
     [q('w')['@Name'] === 'konto plus' && q('w').Small === 'KONTO PLUS' && !('Name' in q('w')), 'in lowercase; saved as another field: a field of its own']
   ]);
 }
+
+{
+  const d = { inputs: [{ name: 'l', text: '[{"Name":"A","ProductTypeCode":"1","variants":"X"}]' }, { name: 'x', text: '<L><P Code="1" Name="n"/><P Code="2" Name="m"/></L>' }], pipelines: [
+    { name: 'a', source: 'l', steps: [{ kind: 'change', field: 'ProductTypeCode', as: 'type', how: { kind: '' } }] },
+    { name: 'b', source: 'x.P', steps: [{ kind: 'change', field: 'Code', as: 'type' }] },
+    { name: 'c', source: 'l', steps: [{ kind: 'change', field: 'Name', as: 'info.name' }] },
+    { name: 'd', source: 'l', steps: [{ kind: 'change', field: 'ProductTypeCode', as: 'type', how: { kind: 'upper' } }] }
+  ] };
+  const r9 = runDocument(d, {});
+  const q = (n) => JSON.stringify(r9.pipelines.find((x) => x.name === n).result[0]);
+  runChecks([
+    [q('a') === '{"Name":"A","type":"1","variants":"X"}', 'no transformation and another name: the column renamed in its place'],
+    [q('b') === '{"type":"1","@Name":"n"}', 'an XML attribute renamed'],
+    [q('c') === '{"ProductTypeCode":"1","variants":"X","info":{"name":"A"}}', 'renamed into a nested field'],
+    [q('d') === '{"Name":"A","ProductTypeCode":"1","variants":"X","type":"1"}', 'with a transformation: the result in another column, this one stays']
+  ]);
+}

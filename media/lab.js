@@ -488,7 +488,10 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
       s.how = s.how || { kind: '' };
       const lead = kindBefore === 'value' ? [lbl(M('dv.value')), lbl('→')] : [lbl(M(kindBefore === 'object' ? 'dv.field' : 'dv.column')), columnPick(k + '.f', s.field, cols, (v) => { s.field = v; structural(); }), lbl('→')];
       howChain(box, k, s, cols, lead);
-      if (kindBefore !== 'value') box.appendChild(row([lbl(M('dv.saveAs')), text(k + '.as', s.as, (v) => { s.as = v; }, s.field || M('dv.sameColumn'), 14)]));
+      if (kindBefore !== 'value') {
+        box.appendChild(row([lbl(M('dv.saveAs')), text(k + '.as', s.as, (v) => { s.as = v; }, s.field || M('dv.sameColumn'), 14)]));
+        box.appendChild(el('div', { class: 'dim small', text: M(s.how && s.how.kind ? 'dv.saveAsHint' : 'dv.renameHint') }));
+      }
       break;
     }
     case 'add': {
