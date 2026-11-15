@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.2.0] - 2026-11-15
 
 - Algorithms: the steps of a transformation saved apart from the data, as
   `<name>.algorithm.json` in the labs folder, to run on any data in any lab. A
