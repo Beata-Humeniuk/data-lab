@@ -1,10 +1,5 @@
 'use strict';
 
-// A webview page as VS Code shows it: the theme class on <body> and the
-// theme colours as --vscode-* variables. Screenshots of the designer are
-// taken through this, in the dark theme by default (the one the owner
-// uses); a page opened bare in a browser has no --vscode-* variables and
-// shows only the fallbacks.
 const THEMES = {
   dark: {
     bodyClass: 'vscode-dark',
@@ -39,8 +34,10 @@ const THEMES = {
 function themed(html, kind = 'dark') {
   const theme = THEMES[kind];
   const vars = Object.entries(theme.vars).map(([k, v]) => `--vscode-${k}: ${v};`).join(' ');
+  const nonce = (html.match(/<style nonce="([^"]+)"/) || [])[1];
+  const open = nonce ? `<style nonce="${nonce}">` : '<style>';
   return html
-    .replace('</head>', `<style>html { ${vars} }</style></head>`)
+    .replace('</head>', `${open}html { ${vars} }</style></head>`)
     .replace(/<body([^>]*)>/, (m, attrs) => `<body${attrs} class="${theme.bodyClass}">`);
 }
 

@@ -1,33 +1,13 @@
-// Transforming data step by step, with the result of every step shown
-// (owner, 2026-11-15: „mam dwie listy i od czterech godzin nie mogę ich
-// przekształcić … to ma być proste w obsłudze"). The lab's own model:
-//
-//   doc = {
-//     inputs: [{ name, text, format }],
-//     pipelines: [{ name, source, steps: [step…] }]
-//   }
-//
-// An input is a sample in any format sampleFormats reads; a pipeline takes a
-// list (a path in an input, or another pipeline's result) and runs its
-// steps in turn. A step that keeps a list (filter, sort, distinct, reverse,
-// compare, columns, change) hands a list on; a step that makes one value
-// (first, last, nth, count, sum, min, max, avg) ends the pipeline.
-//
-// The list steps are the flow run's own (flowRun.runStream) — the same
-// results as in a flow — and a column is changed by the ways of the "+ ƒ"
-// list (flowRun.runHow).
-
 const { parseSample } = require('./sampleFormats');
 const { runStream, runHow, same } = require('./flowRun');
-const { RunError, isPlainObject, textOf, evalExpr } = require('./mappingRun');
+const { RunError, isPlainObject, textOf, evalExpr, serialize } = require('./mappingRun');
 
-const LIST_STEPS = ['filter', 'sort', 'distinct', 'reverse', 'merge', 'compare', 'append', 'columns', 'drop', 'change', 'skip', 'limit'];
+const LIST_STEPS = ['filter', 'sort', 'distinct', 'reverse', 'merge', 'compare', 'append', 'columns', 'drop', 'flatten', 'change', 'skip', 'limit'];
 const VALUE_STEPS = ['first', 'last', 'nth', 'count', 'sum', 'min', 'max', 'avg', 'join'];
 const STEP_KINDS = LIST_STEPS.concat(VALUE_STEPS, ['add', 'take', 'asList']);
 
 function clone(v) { return v === undefined ? undefined : JSON.parse(JSON.stringify(v)); }
 
-// The inputs read: { name → value }, and what each read as.
 function readInputs(inputs) {
   const values = {};
   const states = {};
@@ -38,7 +18,6 @@ function readInputs(inputs) {
     const p = parseSample(inp.text, inp.format && inp.format !== 'auto' ? inp.format : undefined);
     if (!p.ok) { states[name] = { ok: false, error: p.error }; continue; }
     let value = p.value;
-    // An XML document is its root element's content.
     if (p.format === 'xml' && isPlainObject(value) && Object.keys(value).length === 1) value = value[Object.keys(value)[0]];
     values[name] = value;
     states[name] = { ok: true, format: p.format };
@@ -46,8 +25,6 @@ function readInputs(inputs) {
   return { values, states };
 }
 
-// Every list in a value, by its path: an array, or an element repeated in
-// an XML document (read as an array) — and its size.
 function listsIn(value, base, out, depth) {
   out = out || [];
   if (depth > 8) return out;
@@ -55,7 +32,6 @@ function listsIn(value, base, out, depth) {
     out.push({ path: base, count: value.length });
     const first = value.find((x) => isPlainObject(x));
     if (first) {
-      // Lists inside the elements: by their path under the element.
       const keys = new Set();
       value.forEach((x) => { if (isPlainObject(x)) Object.keys(x).forEach((k) => keys.add(k)); });
       for (const k of keys) {
@@ -69,13 +45,8 @@ function listsIn(value, base, out, depth) {
   return out;
 }
 
-// What a value is: a list, an object, one value.
 function kindOf(v) { return Array.isArray(v) ? 'list' : isPlainObject(v) ? 'object' : 'value'; }
 
-// What a transformation can start from (owner, 2026-11-15: „dlaczego tylko
-// listę mogę wybrać? Przecież nie tylko na listach się operuje"): every
-// input as a whole, every object and list in it, every field — and the
-// results of the transformations before. { path, kind, count }.
 function sourcesOf(values, pipelines, upTo, resultKinds) {
   const out = [];
   const seen = new Set();
@@ -84,7 +55,6 @@ function sourcesOf(values, pipelines, upTo, resultKinds) {
     if (depth > 8) return;
     if (Array.isArray(v)) {
       add(path, 'list', v.length);
-      // Lists inside its elements, by their path under the element.
       for (const l of listsIn(v, path, [], 0)) if (l.path !== path) add(l.path, 'list', l.count);
       return;
     }
@@ -106,7 +76,6 @@ function sourcesOf(values, pipelines, upTo, resultKinds) {
   return out;
 }
 
-// A path read from the inputs and the pipelines' results.
 function valueAt(root, path) {
   let cur = root;
   for (const seg of String(path || '').split('.').filter(Boolean)) {
@@ -121,9 +90,6 @@ function asList(v) {
   return Array.isArray(v) ? v : [v];
 }
 
-// The columns of a list: the element's fields, nested ones by a dotted
-// path (lists inside are one column each); a list of plain values has one
-// column, "" — the value itself.
 function columnsOf(list) {
   const cols = [];
   const add = (c) => { if (cols.indexOf(c) < 0) cols.push(c); };
@@ -157,19 +123,13 @@ function shown(v) {
   if (isPlainObject(v)) return '{…}';
   return textOf(v);
 }
-// What a step gives, for the table: a list (columns and rows, the first
-// 200), an object (one row), a value.
-// The page draws the data itself — the first level as a table, what is
-// nested opened on a click — so a view carries the value (a list's first
-// 200 elements).
 function view(v) {
   if (Array.isArray(v)) return { kind: 'list', count: v.length, data: v.slice(0, 200) };
   if (isPlainObject(v)) return { kind: 'object', count: Object.keys(v).length, data: v };
   return { kind: 'value', value: v === undefined ? null : v, text: shown(v) };
 }
 
-// The steps each kind of value takes.
-const OBJECT_STEPS = ['merge', 'columns', 'drop', 'change', 'add', 'take', 'asList'];
+const OBJECT_STEPS = ['merge', 'columns', 'drop', 'flatten', 'change', 'add', 'take', 'asList'];
 const VALUE_ONLY_STEPS = ['change'];
 function stepsFor(kind) {
   if (kind === 'list') return LIST_STEPS.concat(['add'], VALUE_STEPS);
@@ -184,12 +144,220 @@ function setPath(obj, path, value) {
   cur[segs[segs.length - 1]] = value === undefined ? null : value;
   return obj;
 }
+function removeAt(node, segs) {
+  if (Array.isArray(node)) { node.forEach((x) => removeAt(x, segs)); return; }
+  if (!isPlainObject(node) || !segs.length) return;
+  const [seg, ...rest] = segs;
+  if (!rest.length) { delete node[seg]; delete node['@' + seg]; return; }
+  const key = Object.prototype.hasOwnProperty.call(node, seg) ? seg : '@' + seg;
+  const child = node[key];
+  const wasFilled = isPlainObject(child) && Object.keys(child).length > 0;
+  removeAt(child, rest);
+  if (wasFilled && !Object.keys(child).length) delete node[key];
+}
 function removePath(obj, path) {
-  const segs = String(path).split('.').filter(Boolean);
-  let cur = obj;
-  for (let i = 0; i < segs.length - 1; i++) { if (!isPlainObject(cur)) return obj; cur = cur[segs[i]]; }
-  if (isPlainObject(cur)) { delete cur[segs[segs.length - 1]]; delete cur['@' + segs[segs.length - 1]]; }
+  removeAt(obj, String(path).split('.').filter(Boolean));
   return obj;
+}
+
+function plainKey(k) { return k.charAt(0) === '@' ? k.slice(1) : k; }
+
+function deepFields(v) {
+  const out = [];
+  const seen = new Map();
+  const add = (path, kind, viaList) => {
+    if (!path) return;
+    const was = seen.get(path);
+    if (was) { if (kind === 'list') was.kind = 'list'; else if (was.kind === 'value' && kind === 'object') was.kind = 'object'; was.viaList = was.viaList || viaList; return; }
+    if (out.length >= 400) return;
+    const f = { path, kind, viaList };
+    seen.set(path, f);
+    out.push(f);
+  };
+  const walk = (node, prefix, depth, viaList) => {
+    if (depth > 6) return;
+    if (Array.isArray(node)) { node.slice(0, 200).forEach((x) => walk(x, prefix, depth, viaList)); return; }
+    if (!isPlainObject(node)) return;
+    for (const k of Object.keys(node)) {
+      if (k === '#text') continue;
+      const path = prefix ? prefix + '.' + plainKey(k) : plainKey(k);
+      const val = node[k];
+      if (Array.isArray(val)) { add(path, 'list', viaList); walk(val, path, depth + 1, true); }
+      else if (isPlainObject(val)) { add(path, 'object', viaList); walk(val, path, depth + 1, viaList); }
+      else add(path, 'value', viaList);
+    }
+  };
+  walk(v, '', 0, false);
+  return out;
+}
+
+function namedInto(row, name, value, parent, keepParent) {
+  let to = keepParent && parent ? parent + '_' + name : name;
+  if (Object.prototype.hasOwnProperty.call(row, to)) to = parent ? parent + '_' + name : to;
+  let n = 2;
+  const base = to;
+  while (Object.prototype.hasOwnProperty.call(row, to)) to = base + '_' + n++;
+  row[to] = value;
+}
+function objectPaths(list) {
+  const out = new Set();
+  const walk = (node, prefix, depth) => {
+    if (depth > 8 || !isPlainObject(node)) return;
+    for (const k of Object.keys(node)) {
+      const path = prefix ? prefix + '.' + plainKey(k) : plainKey(k);
+      if (isPlainObject(node[k])) { out.add(path); walk(node[k], path, depth + 1); }
+    }
+  };
+  list.forEach((el) => walk(el, '', 0));
+  return out;
+}
+function spreadObject(obj, parent, keepParent, row, path, objects) {
+  for (const k of Object.keys(obj)) {
+    const name = k === '#text' ? (parent || 'value') : plainKey(k);
+    const val = obj[k];
+    const at = path ? path + '.' + plainKey(k) : plainKey(k);
+    if (isPlainObject(val)) spreadObject(val, k === '#text' ? parent : (keepParent && parent ? parent + '_' + name : name), keepParent, row, at, objects);
+    else if (objects && k !== '#text' && objects.has(at) && (val === null || val === undefined || val === '')) continue;
+    else namedInto(row, name, clone(val), k === '#text' ? '' : parent, keepParent);
+  }
+}
+function flatAll(el, keepParent, objects) {
+  if (!isPlainObject(el)) return el;
+  const row = {};
+  for (const k of Object.keys(el)) {
+    const name = plainKey(k);
+    const val = el[k];
+    if (isPlainObject(val)) spreadObject(val, name, keepParent, row, name, objects);
+    else if (objects.has(name) && (val === null || val === undefined || val === '')) continue;
+    else namedInto(row, k === '#text' ? 'value' : name, clone(val), '', false);
+  }
+  return row;
+}
+function pruneEmpty(obj, segs) {
+  for (let n = segs.length; n > 0; n--) {
+    const parent = n > 1 ? cell(obj, segs.slice(0, n - 1).join('.')) : obj;
+    if (!isPlainObject(parent)) return;
+    const key = Object.prototype.hasOwnProperty.call(parent, segs[n - 1]) ? segs[n - 1] : '@' + segs[n - 1];
+    const v = parent[key];
+    if ((isPlainObject(v) && !Object.keys(v).length) || v === '' || v === null) delete parent[key];
+    else return;
+  }
+}
+function fieldIsList(list, field) {
+  return list.some((el) => Array.isArray(cell(el, field)));
+}
+function flattened(list, step) {
+  const field = String(step.field || '').trim();
+  const keepParent = step.names !== 'own';
+  if (!field) {
+    const objects = objectPaths(list);
+    return list.map((el) => flatAll(el, keepParent, objects));
+  }
+  const segs = field.split('.');
+  const leaf = segs[segs.length - 1];
+  const holderPath = segs.slice(0, -1).join('.');
+  const asList = fieldIsList(list, field);
+  const itemObjects = objectPaths(list.flatMap((el) => { const v = cell(el, field); return v === undefined || v === null ? [] : Array.isArray(v) ? v : [v]; }));
+  const out = [];
+  for (const el of list) {
+    if (!isPlainObject(el)) { out.push(el); continue; }
+    const value = cell(el, field);
+    const base = clone(el);
+    const holder = holderPath ? cell(base, holderPath) : base;
+    if (!isPlainObject(holder)) { if (asList) pruneEmpty(base, segs.slice(0, -1)); if (!asList || step.keepEmpty !== false) out.push(base); continue; }
+    delete holder[leaf];
+    delete holder['@' + leaf];
+    const into = (target, item) => {
+      if (isPlainObject(item)) spreadObject(item, leaf, keepParent, target, '', itemObjects);
+      else namedInto(target, leaf, clone(item === undefined ? null : item), '', false);
+    };
+    if (!asList) {
+      if (value !== undefined && value !== null) into(holder, value);
+      out.push(base);
+      continue;
+    }
+    pruneEmpty(base, segs.slice(0, -1));
+    const items = value === undefined || value === null || value === '' ? [] : Array.isArray(value) ? value : [value];
+    if (!items.length) { if (step.keepEmpty !== false) out.push(base); continue; }
+    for (const item of items) {
+      const copy = clone(base);
+      into(copy, item);
+      out.push(copy);
+    }
+  }
+  return out;
+}
+
+function unmarked(v) {
+  if (Array.isArray(v)) return v.map(unmarked);
+  if (!isPlainObject(v)) return v;
+  const out = {};
+  for (const k of Object.keys(v)) {
+    let name = k === '#text' ? 'value' : plainKey(k);
+    if (Object.prototype.hasOwnProperty.call(out, name)) name = k;
+    out[name] = unmarked(v[k]);
+  }
+  return out;
+}
+function textFirst(node) {
+  return Object.keys(node).sort((a, b) => (b === '#text') - (a === '#text'));
+}
+function tableColumns(rows) {
+  const lists = new Set();
+  const objects = new Set();
+  const labelOf = (k, prefix) => (k === '#text' ? prefix || 'value' : prefix ? prefix + '.' + plainKey(k) : plainKey(k));
+  const scan = (node, prefix, depth) => {
+    for (const k of Object.keys(node)) {
+      const name = labelOf(k, prefix);
+      const val = node[k];
+      if (Array.isArray(val)) lists.add(name);
+      else if (isPlainObject(val) && depth < 6) { objects.add(name); scan(val, name, depth + 1); }
+    }
+  };
+  const sample = rows.slice(0, 1000).filter(isPlainObject);
+  sample.forEach((r) => scan(r, '', 0));
+  const cols = [];
+  const add = (name) => { if (cols.indexOf(name) < 0) cols.push(name); };
+  const walk = (node, prefix, depth) => {
+    for (const k of textFirst(node)) {
+      const name = labelOf(k, prefix);
+      const val = node[k];
+      if (lists.has(name)) add(name);
+      else if (isPlainObject(val) && depth < 6) walk(val, name, depth + 1);
+      else if (objects.has(name) && k !== '#text' && (val === '' || val === null || val === undefined)) continue;
+      else add(name);
+    }
+  };
+  sample.forEach((r) => walk(r, '', 0));
+  return cols;
+}
+function tableCell(row, col) {
+  const segs = col.split('.');
+  let cur = row;
+  for (const seg of segs) {
+    if (!isPlainObject(cur)) return undefined;
+    cur = Object.prototype.hasOwnProperty.call(cur, seg) ? cur[seg] : Object.prototype.hasOwnProperty.call(cur, '@' + seg) ? cur['@' + seg] : undefined;
+  }
+  if (isPlainObject(cur) && Object.prototype.hasOwnProperty.call(cur, '#text')) return cur['#text'];
+  if (cur === undefined && col === 'value' && isPlainObject(row)) return row['#text'];
+  return cur;
+}
+function csvText(v) {
+  const rows = Array.isArray(v) ? v : [v];
+  const quote = (x) => {
+    if (x === undefined || x === null) return '';
+    const t = Array.isArray(x) ? (x.every((y) => !isPlainObject(y) && !Array.isArray(y)) ? x.map((y) => (y === null || y === undefined ? '' : String(y))).join(', ') : JSON.stringify(unmarked(x))) : isPlainObject(x) ? JSON.stringify(unmarked(x)) : String(x);
+    return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+  };
+  if (!rows.some(isPlainObject)) return ['value'].concat(rows.map(quote)).join('\n') + '\n';
+  const cols = tableColumns(rows);
+  return [cols.map(quote).join(',')].concat(rows.map((r) => cols.map((c) => quote(isPlainObject(r) ? tableCell(r, c) : (c === 'value' ? r : undefined))).join(','))).join('\n') + '\n';
+}
+const RESULT_FORMATS = ['json', 'xml', 'yaml', 'properties', 'csv'];
+function outputText(v, format, name) {
+  if (format === 'csv') return csvText(v);
+  if (format === 'xml') return serialize(v, 'xml', name);
+  return serialize(unmarked(v), RESULT_FORMATS.indexOf(format) >= 0 ? format : 'json', name);
 }
 function dropped(el, step) {
   if (!isPlainObject(el)) return el;
@@ -197,13 +365,6 @@ function dropped(el, step) {
   for (const f of (step.fields || []).map((x) => String(x || '').trim()).filter(Boolean)) removePath(out, f);
   return out;
 }
-// A field added (owner, 2026-11-15: „nowe pole, które będzie jakimś
-// przekształceniem innych pól lub stałą lub wzięte z jeszcze innego
-// miejsca"): a constant, another field, a value of any input or result, a
-// field worked out by the "+ ƒ" ways (chained), fields and texts put
-// together, or an expression over the fields. `known` — the fields the
-// list's elements have: one an element lacks is empty there, a name no
-// element has is an unknown name.
 function addedValue(step, el, root, scope, ctx, known) {
   const own = isPlainObject(el) ? el : {};
   if (step.from === 'column') { const v = cell(el, step.column || ''); return v === undefined ? null : clone(v); }
@@ -239,7 +400,6 @@ function addedValue(step, el, root, scope, ctx, known) {
 }
 function changed(el, step, scope, ctx) {
   const col = String(step.field || '').trim();
-  // The row's own fields first: a parameter may name one („kwota").
   const r = runHow(step.how, col ? '__el.' + col : '__el', [{ value: isPlainObject(el) ? el : {}, self: '' }, { value: { __el: el } }].concat(scope), ctx);
   if (!isPlainObject(el)) return r.value === undefined ? null : r.value;
   const to = String(step.as || '').trim() || col;
@@ -254,15 +414,6 @@ function picked(el, step) {
   return out;
 }
 
-// Two lists merged by pairs of fields (owner, 2026-11-15: „chcę obie listy
-// zmergować po różnych parametrach"): each element of this list with the
-// fields of its match in the other; `keep` 'all' keeps the elements without
-// a match too (their other fields empty), 'matched' only those with one.
-// A field both have keeps this list's value; the other's comes in as
-// "<field>_<other list>". `fields`: the other's fields to take ([] — all).
-// An object merges the same way — with another object (its fields come
-// in, no pairs needed) or with the element of a list its pairs match; a
-// list merged with an object gets the object's fields in every element.
 function merged(cur, step, root) {
   const single = !Array.isArray(cur);
   const list = single ? [cur] : cur;
@@ -274,8 +425,6 @@ function merged(cur, step, root) {
   const others = asList(otherValue).filter((x) => x !== null && x !== undefined);
   const label = otherPath.split('.').pop();
   const take = (step.fields || []).map((f) => String(f || '').trim()).filter(Boolean);
-  // The other's fields: those picked, or every first-level field but the
-  // ones matched on (they equal this list's).
   const otherCols = take.length ? take : Array.from(new Set([].concat(...others.filter(isPlainObject).map((o) => Object.keys(o)))))
     .filter((c) => c !== '#text' && !keys.some((k) => k.b === c));
   const out = [];
@@ -297,8 +446,6 @@ function merged(cur, step, root) {
   return single ? out[0] : out;
 }
 
-// One step over what the transformation holds now: a list (the flow run's
-// list steps), an object or one value.
 function stepOn(cur, step, root, ctx) {
   const kind = kindOf(cur);
   if (stepsFor(kind).indexOf(step.kind) < 0) throw new RunError('stepNotFor', { step: step.kind, kind });
@@ -310,6 +457,7 @@ function stepOn(cur, step, root, ctx) {
       case 'merge': return merged(cur, step, root);
       case 'columns': return (step.columns || []).some((x) => String(x.from || '').trim()) ? picked(cur, step) : cur;
       case 'drop': return dropped(cur, step);
+      case 'flatten': { const r = flattened([cur], step); return r.length === 1 ? r[0] : r; }
       case 'change': return String(step.field || '').trim() && step.how && step.how.kind ? changed(cur, step, scope, ctx) : cur;
       case 'add': return String(step.name || '').trim() ? setPath(clone(cur), step.name.trim(), addedValue(step, cur, root, scope, ctx, columnsOf([cur]))) : cur;
       case 'take': { if (!String(step.field || '').trim()) return cur; const v = cell(cur, step.field); return v === undefined ? null : v; }
@@ -343,6 +491,7 @@ function stepOn(cur, step, root, ctx) {
     case 'columns': return (step.columns || []).some((x) => String(x.from || '').trim()) ? list.map((el) => picked(el, step)) : list;
     case 'change': return String(step.field || '').trim() && step.how && step.how.kind ? list.map((el) => changed(el, step, scope, ctx)) : list;
     case 'drop': return list.map((el) => dropped(el, step));
+    case 'flatten': return flattened(list, step);
     case 'add': {
       if (!String(step.name || '').trim()) return list;
       const known = columnsOf(list);
@@ -350,9 +499,6 @@ function stepOn(cur, step, root, ctx) {
     }
     case 'first': return stream(null, { op: 'first' });
     case 'last': return stream(null, { op: 'last' });
-    // The lab counts from 0, like an index (owner, 2026-11-15:
-    // „numerujemy od 0, żeby wiadomo było, który element ma który indeks");
-    // a step saved before has its position from 1 in `n`.
     case 'nth': {
       if (step.index === undefined) return stream(null, { op: 'nth', arg: String(step.n || '1') });
       const i = parseInt(String(step.index).trim(), 10);
@@ -366,9 +512,6 @@ function stepOn(cur, step, root, ctx) {
   throw new RunError('unknownHow', { name: step.kind });
 }
 
-// The whole document run: the inputs read, every pipeline step by step.
-// → { inputs: { name: state }, sources: [...], pipelines: [{ name, source,
-//     sourceView, steps: [{ view, columns, error }], result }] }
 function runDocument(doc, options) {
   const ctx = { opts: options || {} };
   const { values, states } = readInputs(doc.inputs);
@@ -387,7 +530,7 @@ function runDocument(doc, options) {
     res.sourceColumns = colsOf(cur);
     let broken = false;
     for (const step of p.steps || []) {
-      const st = { kindBefore: kindOf(cur), columns: colsOf(cur) };
+      const st = { kindBefore: kindOf(cur), columns: colsOf(cur), fields: deepFields(cur) };
       res.steps.push(st);
       if (broken) { st.error = { code: 'afterError' }; continue; }
       try {
@@ -408,8 +551,6 @@ function runDocument(doc, options) {
   return out;
 }
 
-// The ways a column can be changed, for the view: the "+ ƒ" kinds that work
-// on one value, with their parameters labelled. t — the catalog's t.
 function changeCatalog(t) {
   const { HOW_EXTRA } = require('./howKinds');
   const out = [
@@ -429,4 +570,4 @@ function changeCatalog(t) {
     params: k.params.map((p) => ({ key: p.key, label: p.labelKey ? t(p.labelKey) : p.key, def: p.def, size: p.size, options: p.options })) }));
 }
 
-module.exports = { STEP_KINDS, LIST_STEPS, VALUE_STEPS, OBJECT_STEPS, stepsFor, kindOf, readInputs, listsIn, sourcesOf, columnsOf, runDocument, view, valueAt, asList, changeCatalog };
+module.exports = { RESULT_FORMATS, outputText, csvText, deepFields, STEP_KINDS, LIST_STEPS, VALUE_STEPS, OBJECT_STEPS, stepsFor, kindOf, readInputs, listsIn, sourcesOf, columnsOf, runDocument, view, valueAt, asList, changeCatalog };

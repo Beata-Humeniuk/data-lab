@@ -1,18 +1,6 @@
-// The ways a value is transformed, picked from the "+ ƒ" list of a mapping
-// row and executed by the run (flowRun.js) — owner, 2026-11-15: „brakuje
-// mi tu opcji przekształceń wszelkiego rodzaju". The kinds the designer had
-// before (asText … newId) keep their own forms; the ones here are described
-// by their parameters, so the designer draws their form, the md words them
-// (how.t.<kind> with the parameters) and the run executes them by kind.
-//
-// Parameter types: text, number, select (options: [value, labelKey]),
-// field (a field of the flow, as a mapping's source), elemField (a field of
-// the list's element, relative to it).
-
 const UNITS = [['days', 'how.o.days'], ['weeks', 'how.o.weeks'], ['months', 'how.o.months'], ['years', 'how.o.years'], ['hours', 'how.o.hours'], ['minutes', 'how.o.minutes']];
 
 const HOW_EXTRA = [
-  // text
   { kind: 'replace', group: 'how.g.text', params: [{ key: 'find', type: 'text' }, { key: 'with', type: 'text' }] },
   { kind: 'replaceRegex', group: 'how.g.text', params: [{ key: 'pattern', type: 'text', size: 12 }, { key: 'with', type: 'text' }] },
   { kind: 'extract', group: 'how.g.text', params: [{ key: 'pattern', type: 'text', size: 12 }] },
@@ -27,7 +15,6 @@ const HOW_EXTRA = [
   { kind: 'mask', group: 'how.g.text', params: [{ key: 'keep', type: 'number', def: '4' }, { key: 'char', type: 'text', def: '*', size: 2 }] },
   { kind: 'split', group: 'how.g.text', params: [{ key: 'sep', type: 'text', def: ',', size: 3 }] },
   { kind: 'length', group: 'how.g.text', params: [] },
-  // numbers
   { kind: 'calc', group: 'how.g.number', params: [{ key: 'op', type: 'select', options: [['+', 'how.o.plus'], ['-', 'how.o.minus'], ['*', 'how.o.times'], ['/', 'how.o.div'], ['%', 'how.o.mod']], def: '+' }, { key: 'value', type: 'field' }] },
   { kind: 'percent', group: 'how.g.number', params: [{ key: 'value', type: 'number', def: '23' }] },
   { kind: 'abs', group: 'how.g.number', params: [] },
@@ -39,7 +26,6 @@ const HOW_EXTRA = [
   { kind: 'formatNumber', group: 'how.g.number', params: [{ key: 'decimals', type: 'number', def: '2' },
     { key: 'decSep', type: 'select', options: [[',', 'how.o.comma'], ['.', 'how.o.dot']], def: ',' },
     { key: 'groupSep', type: 'select', options: [['', 'how.o.none'], [' ', 'how.o.space'], ['.', 'how.o.dot'], [',', 'how.o.comma']], def: '' }] },
-  // dates
   { kind: 'addTime', group: 'how.g.date', params: [{ key: 'amount', type: 'number', def: '30' }, { key: 'unit', type: 'select', options: UNITS, def: 'days' }] },
   { kind: 'dateDiff', group: 'how.g.date', params: [{ key: 'other', type: 'field' }, { key: 'unit', type: 'select', options: [['days', 'how.o.days'], ['months', 'how.o.months'], ['years', 'how.o.years']], def: 'days' }] },
   { kind: 'age', group: 'how.g.date', params: [] },
@@ -49,21 +35,18 @@ const HOW_EXTRA = [
   { kind: 'datePart', group: 'how.g.date', params: [{ key: 'part', type: 'select', options: [['year', 'how.o.year'], ['month', 'how.o.month'], ['day', 'how.o.day'], ['hour', 'how.o.hour'], ['minute', 'how.o.minute']], def: 'year' }] },
   { kind: 'formatDateAs', group: 'how.g.date', params: [{ key: 'pattern', type: 'text', def: 'dd.MM.yyyy', size: 14, labelKey: 'how.p.datePattern' }] },
   { kind: 'parseDateAs', group: 'how.g.date', params: [{ key: 'pattern', type: 'text', def: 'dd.MM.yyyy', size: 14, labelKey: 'how.p.datePattern' }] },
-  // logic
   { kind: 'ifEmpty', group: 'how.g.logic', params: [{ key: 'value', type: 'field' }] },
   { kind: 'isEmpty', group: 'how.g.logic', params: [] },
   { kind: 'equalsTo', group: 'how.g.logic', params: [{ key: 'value', type: 'field' }] },
   { kind: 'inValues', group: 'how.g.logic', params: [{ key: 'values', type: 'text', size: 16 }] },
   { kind: 'negate', group: 'how.g.logic', params: [] },
   { kind: 'constant', group: 'how.g.logic', params: [{ key: 'value', type: 'text', size: 12 }] },
-  // encoding
   { kind: 'base64Encode', group: 'how.g.code', params: [] },
   { kind: 'base64Decode', group: 'how.g.code', params: [] },
   { kind: 'urlEncode', group: 'how.g.code', params: [] },
   { kind: 'urlDecode', group: 'how.g.code', params: [] },
   { kind: 'sha256', group: 'how.g.code', params: [] },
   { kind: 'md5', group: 'how.g.code', params: [] },
-  // lists
   { kind: 'listSum', group: 'how.g.list', params: [{ key: 'field', type: 'elemField' }] },
   { kind: 'listMin', group: 'how.g.list', params: [{ key: 'field', type: 'elemField' }] },
   { kind: 'listMax', group: 'how.g.list', params: [{ key: 'field', type: 'elemField' }] },
@@ -75,7 +58,6 @@ const HOW_EXTRA = [
   { kind: 'listReverse', group: 'how.g.list', params: [] }
 ];
 
-// The kinds that work on a list as a whole (the rest work on each value).
 const HOW_LIST_KINDS = ['listField', 'listFilter', 'listHead', 'listFirst', 'listPrefer', 'listHas', 'listCount', 'listJoin',
   'listSum', 'listMin', 'listMax', 'listAvg', 'listSort', 'listDistinct', 'listLast', 'listAt', 'listReverse'];
 

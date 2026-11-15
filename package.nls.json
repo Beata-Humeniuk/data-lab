@@ -1,4 +1,5 @@
 {
-  "description": "Sample data in any format (JSON, XML, YAML, CSV, key=value) and its transformations step by step — filter, sort, merge, compare, compute — with every step's result as a table.",
-  "command.open.title": "DataLab: Open a lab"
+  "description": "Sample data in any format (JSON, XML, YAML, CSV, key=value) and its transformations step by step: filter, sort, merge, compare and compute, with every step's result as a table.",
+  "command.open.title": "Open a Lab",
+  "config.labsFolder.description": "Folder where labs are saved, one `<name>.lab.json` file per lab. A relative path is resolved against the first workspace folder; an absolute path is used as it is. Leave empty to use `data` in the workspace."
 }
