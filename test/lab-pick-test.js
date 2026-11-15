@@ -18,3 +18,8 @@ runChecks([
   [empty.find((i) => i.label === 'Channels').description === 'extension storage' && empty.find((i) => i.label === 'Discount trials').id === 'discount-trials', 'a lab kept in the extension storage says so; the others open by their file and id'],
   [empty.filter((i) => i.action === 'open').length === 2 && empty[empty.length - 1].action === 'delete', 'existing labs, then delete']
 ]);
+
+const withAlgorithms = labPickItems(list, '', t, 2);
+runChecks([
+  [withAlgorithms[withAlgorithms.length - 1].action === 'deleteAlgorithm' && !empty.some((i) => i.action === 'deleteAlgorithm'), 'saved algorithms: an item to delete one, none without them']
+]);

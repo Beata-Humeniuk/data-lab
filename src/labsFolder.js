@@ -2,6 +2,7 @@ const path = require('path');
 
 const DEFAULT_FOLDER = 'data';
 const LAB_SUFFIX = '.lab.json';
+const ALGORITHM_SUFFIX = '.algorithm.json';
 
 function specPackageOf(workspacePath) {
   return workspacePath ? path.join(workspacePath, path.basename(workspacePath) + '-spec') : '';
@@ -30,4 +31,8 @@ function labIdOf(fileName) {
   return fileName.endsWith(LAB_SUFFIX) ? fileName.slice(0, -LAB_SUFFIX.length) : '';
 }
 
-module.exports = { DEFAULT_FOLDER, LAB_SUFFIX, resolveLabsFolder, specPackageOf, slugOf, labIdOf };
+function algorithmIdOf(fileName) {
+  return fileName.endsWith(ALGORITHM_SUFFIX) ? fileName.slice(0, -ALGORITHM_SUFFIX.length) : '';
+}
+
+module.exports = { DEFAULT_FOLDER, LAB_SUFFIX, ALGORITHM_SUFFIX, resolveLabsFolder, specPackageOf, slugOf, labIdOf, algorithmIdOf };

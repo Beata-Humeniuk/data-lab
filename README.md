@@ -108,6 +108,25 @@ You can start from:
 - A nested structure within an input.
 - The named result of a previous transformation.
 
+### Algorithms: Reuse Steps on Other Data
+
+An algorithm is a saved sequence of transformation steps, kept apart from the
+data. The same algorithm can run on different inputs, and one input can feed
+different algorithms.
+
+- Select **Save as algorithm** on a transformation to save its steps as
+  `<name>.algorithm.json` in the labs folder.
+- Choose an algorithm from **+ From an algorithm…** under the transformations
+  of any lab, then pick the data it runs on as the source.
+- A transformation that uses an algorithm shows its name. A step changed there
+  changes the algorithm, and every transformation that uses it, in every lab.
+- Select **Detach** to keep the steps as a copy of this transformation only.
+- Delete algorithms from **DataLab: Open a Lab → Delete an algorithm…**.
+  Transformations that used a deleted algorithm keep their steps.
+
+Steps that refer to other data, such as Merge or Compare, refer to it by name,
+so another lab needs data of the same name.
+
 ### Reuse Named Results
 
 Give a transformation a **result name** to save its result as a collection of

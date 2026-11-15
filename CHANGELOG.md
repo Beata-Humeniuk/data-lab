@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Algorithms: the steps of a transformation saved apart from the data, as
+  `<name>.algorithm.json` in the labs folder, to run on any data in any lab. A
+  change in one place changes the algorithm everywhere it is used; **Detach**
+  keeps a copy instead.
 - Named results can be used in every transformation of the lab, not only in
   those below them; the lab works out the order. Their nested lists and objects
   are sources too.

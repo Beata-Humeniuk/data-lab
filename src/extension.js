@@ -3,7 +3,8 @@
 const vscode = require('vscode');
 const path = require('path');
 const { forLanguage } = require('./nls');
-const { LAB_SUFFIX, resolveLabsFolder, specPackageOf, slugOf, labIdOf } = require('./labsFolder');
+const { LAB_SUFFIX, ALGORITHM_SUFFIX, resolveLabsFolder, specPackageOf, slugOf, labIdOf, algorithmIdOf } = require('./labsFolder');
+const algo = require('./algorithms');
 
 function displayLanguage() {
   const ws = vscode.workspace;
@@ -77,17 +78,51 @@ async function listLabs(context) {
   return inFolder.concat(inStorage).sort((a, b) => b.mtime - a.mtime);
 }
 
+async function algorithmsIn(folder, where) {
+  let entries = [];
+  try { entries = await vscode.workspace.fs.readDirectory(folder); } catch (e) { return []; }
+  const out = [];
+  for (const [nm, kind] of entries) {
+    const id = kind === vscode.FileType.File ? algorithmIdOf(nm) : '';
+    if (!id) continue;
+    const file = vscode.Uri.joinPath(folder, nm);
+    const a = algo.normalizeAlgorithm(await readJson(file), id);
+    out.push({ id, file, where, name: a.name, steps: a.steps });
+  }
+  return out;
+}
+async function listAlgorithms(context) {
+  const folder = await labsFolder();
+  const inFolder = folder ? await algorithmsIn(folder, 'folder') : [];
+  const inStorage = folder && path.resolve(folder.fsPath) === path.resolve(storageRoot(context).fsPath) ? [] : await algorithmsIn(storageRoot(context), 'storage');
+  const out = {};
+  for (const a of inFolder.concat(inStorage)) if (!out[a.id]) out[a.id] = a;
+  return out;
+}
+async function saveAlgorithm(context, name, steps) {
+  const chosen = await labsFolder();
+  const folder = chosen || storageRoot(context);
+  await vscode.workspace.fs.createDirectory(folder);
+  const id = slugOf(name, Object.keys(await listAlgorithms(context)));
+  await writeJson(vscode.Uri.joinPath(folder, id + ALGORITHM_SUFFIX), { name: String(name).trim(), steps: steps || [] });
+  return id;
+}
+function refreshPanels(exceptKey) {
+  for (const [key, entry] of panels) if (key !== exceptKey) entry.refresh();
+}
+
 async function openCommand(context) {
   const list = await listLabs(context);
+  const algorithms = Object.values(await listAlgorithms(context));
   const { labPickItems } = require('./labPick');
   const picked = await new Promise((resolve) => {
     const qp = vscode.window.createQuickPick();
     qp.title = nls.t('lab.pick');
     qp.placeholder = nls.t('lab.pickPh');
-    qp.items = labPickItems(list, '', nls.t);
+    qp.items = labPickItems(list, '', nls.t, algorithms.length);
     let done = false;
     const finish = (v) => { if (done) return; done = true; resolve(v); qp.hide(); };
-    qp.onDidChangeValue((v) => { qp.items = labPickItems(list, v, nls.t); });
+    qp.onDidChangeValue((v) => { qp.items = labPickItems(list, v, nls.t, algorithms.length); });
     qp.onDidAccept(() => {
       const chosen = qp.selectedItems[0] || qp.activeItems[0];
       if (chosen) finish(chosen);
@@ -97,6 +132,16 @@ async function openCommand(context) {
     qp.show();
   });
   if (!picked) return;
+  if (picked.action === 'deleteAlgorithm') {
+    const which = await vscode.window.showQuickPick(algorithms.map((a) => ({ label: a.name || a.id, description: a.where === 'storage' ? nls.t('lab.inStorage') : '', file: a.file })), { title: nls.t('alg.deletePick') });
+    if (!which) return;
+    const yes = nls.t('lab.deleteYes');
+    if (await vscode.window.showWarningMessage(nls.t('alg.deleteConfirm', { name: which.label }), { modal: true }, yes) !== yes) return;
+    await vscode.workspace.fs.delete(which.file, { useTrash: false });
+    vscode.window.showInformationMessage(nls.t('alg.deleted', { name: which.label }));
+    refreshPanels();
+    return;
+  }
   if (picked.action === 'delete') {
     const which = await vscode.window.showQuickPick(list.map((s) => ({ label: s.title, description: s.where === 'storage' ? nls.t('lab.inStorage') : '', remove: s.remove })), { title: nls.t('lab.deletePick') });
     if (!which) return;
@@ -139,16 +184,19 @@ function workspaceRoot() {
 const panels = new Map();
 async function openLab(context, file, id) {
   const key = path.resolve(file.fsPath);
-  if (panels.has(key)) { panels.get(key).reveal(vscode.ViewColumn.Active); return; }
+  if (panels.has(key)) { panels.get(key).panel.reveal(vscode.ViewColumn.Active); return; }
   const { buildLabHtml } = require('./labView');
   const dp = require('./dataPipeline');
   let lab = normalizeLab(await readJson(file), id);
+  let algorithms = await listAlgorithms(context);
+  if (algo.linkedSteps(lab, algorithms)) await writeJson(file, lab);
+  if (panels.has(key)) { panels.get(key).panel.reveal(vscode.ViewColumn.Active); return; }
   const panel = vscode.window.createWebviewPanel('dataLab', nls.t('lab.title', { name: lab.name }), vscode.ViewColumn.Active,
     { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
   panel.iconPath = vscode.Uri.joinPath(context.extensionUri, 'media', 'icon.png');
   panel.webview.html = buildLabHtml(displayLanguage());
-  panels.set(key, panel);
-  panel.onDidDispose(() => panels.delete(key));
+  const algorithmList = () => Object.values(algorithms).map((a) => ({ id: a.id, name: a.name || a.id, steps: a.steps }))
+    .sort((a, b) => a.name.localeCompare(b.name));
   const docOf = () => ({ inputs: lab.inputs, pipelines: lab.pipelines, format: lab.format });
   const compute = () => {
     let r;
@@ -167,12 +215,45 @@ async function openLab(context, file, id) {
     return r;
   };
   const catalog = dp.changeCatalog(nls.t);
+  const sendLoad = () => panel.webview.postMessage({ type: 'load', doc: docOf(), catalog, title: nls.t('lab.title', { name: lab.name }), result: compute(), algorithms: algorithmList() });
+  const takeDoc = (d) => { if (d && typeof d === 'object') lab = normalizeLab(Object.assign({}, d, { name: lab.name }), lab.name); };
+  panels.set(key, { panel, refresh: async () => {
+    algorithms = await listAlgorithms(context);
+    if (algo.linkedSteps(lab, algorithms)) await writeJson(file, lab);
+    sendLoad();
+  } });
+  panel.onDidDispose(() => panels.delete(key));
   panel.webview.onDidReceiveMessage(async (m) => {
-    if (m.type === 'ready') { panel.webview.postMessage({ type: 'load', doc: docOf(), catalog, title: nls.t('lab.title', { name: lab.name }), result: compute() }); return; }
+    if (m.type === 'ready') { sendLoad(); return; }
     if (m.type === 'doc' && m.doc && typeof m.doc === 'object') {
-      lab = normalizeLab(Object.assign({}, m.doc, { name: lab.name }), lab.name);
+      takeDoc(m.doc);
+      const edited = algo.editedAlgorithms(lab, algorithms);
+      const ids = Object.keys(edited);
+      for (const aid of ids) {
+        algorithms[aid].steps = edited[aid];
+        await writeJson(algorithms[aid].file, { name: algorithms[aid].name, steps: edited[aid] });
+      }
+      const siblings = ids.length > 0 && algo.linkedSteps(lab, algorithms);
       await writeJson(file, lab);
-      panel.webview.postMessage({ type: 'result', result: compute() });
+      if (siblings) sendLoad();
+      else panel.webview.postMessage({ type: 'result', result: compute(), algorithms: algorithmList() });
+      if (ids.length) refreshPanels(key);
+      return;
+    }
+    if (m.type === 'saveAlgorithm') {
+      takeDoc(m.doc);
+      await writeJson(file, lab);
+      const p = lab.pipelines[m.index];
+      if (!p) return;
+      const name = await vscode.window.showInputBox({ title: nls.t('alg.save'), prompt: nls.t('alg.namePrompt'), value: String(p.name || '').trim() || nls.t('alg.nameDefault') });
+      if (!name || !name.trim()) return;
+      const aid = await saveAlgorithm(context, name, p.steps);
+      algorithms = await listAlgorithms(context);
+      p.algorithm = aid;
+      await writeJson(file, lab);
+      sendLoad();
+      refreshPanels(key);
+      vscode.window.showInformationMessage(nls.t('alg.saved', { name: name.trim() }));
       return;
     }
     if (m.type === 'pickFile') {
