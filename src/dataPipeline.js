@@ -467,7 +467,7 @@ function picked(el, step) {
   const out = {};
   for (const c of (step.columns || []).filter((x) => String(x.from || '').trim())) {
     const v = cell(el, c.from);
-    out[String(c.as || '').trim() || c.from.split('.').pop()] = v === undefined ? null : clone(v);
+    setPath(out, String(c.as || '').trim() || c.from.split('.').pop(), v === undefined ? null : clone(v));
   }
   return out;
 }
@@ -483,8 +483,9 @@ function merged(cur, step, root) {
   const others = asList(otherValue).filter((x) => x !== null && x !== undefined);
   const label = otherPath.split('.').pop();
   const take = (step.fields || []).map((f) => String(f || '').trim()).filter(Boolean);
-  const otherCols = take.length ? take : Array.from(new Set([].concat(...others.filter(isPlainObject).map((o) => Object.keys(o)))))
-    .filter((c) => c !== '#text' && !keys.some((k) => k.b === c));
+  const otherCols = take.length ? take : Array.from(new Set([].concat(...others.filter(isPlainObject).map((o) => Object.keys(o).filter((k) => k !== '#text').map(plainKey)))))
+    .filter((c) => !keys.some((k) => k.b === c));
+  const taken = (row, name) => Object.prototype.hasOwnProperty.call(row, name) || Object.prototype.hasOwnProperty.call(row, '@' + name);
   const out = [];
   for (const el of list) {
     const match = !keys.length ? others[0] : others.find((o) => keys.every((k) => {
@@ -496,7 +497,7 @@ function merged(cur, step, root) {
     for (const c of otherCols) {
       const v = match === undefined ? null : cell(match, c);
       const name = c.split('.').pop();
-      const to = Object.prototype.hasOwnProperty.call(row, name) ? name + '_' + label : name;
+      const to = taken(row, name) ? name + '_' + label : name;
       row[to] = v === undefined ? null : clone(v);
     }
     out.push(row);

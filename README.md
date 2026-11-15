@@ -100,7 +100,12 @@ interactive preview table.
 
 ### 3. Build Transformations
 
-Choose the data you want to transform.
+The left panel holds the two parts of a lab apart: **Inputs** (the data) and
+**Transformations** (the steps). Select **+ Add a transformation** there, or
+**+ From an algorithm…**, and the transformation opens on the right. Select a
+transformation in the list to open it; one is shown at a time.
+
+Choose the data you want to transform in **from**.
 
 You can start from:
 
@@ -137,7 +142,7 @@ the lab. A named result:
   Compare, Append, Add field from another input, expressions).
 - Offers its nested lists and objects as sources too, for example
   `orders.lines`.
-- Is listed under **Results** on the left; select it to inspect it as a table.
+- Is listed by its name under **Transformations** on the left.
 - Always reflects the current inputs and steps.
 
 A result name must differ from the input names and the other result names. A
@@ -148,6 +153,20 @@ the current data type.
 
 Each step provides a preview, allowing you to inspect how the data changes
 throughout the transformation.
+
+### 4. Save, Undo and Redo
+
+Changes are not written until **Save** (Ctrl+S / Cmd+S). **Unsaved** next to
+the title marks changes not saved yet. **Undo** (Ctrl+Z) and **Redo**
+(Ctrl+Shift+Z or Ctrl+Y) are the arrows in the header. Unsaved changes of a
+closed lab come back when it is opened again.
+
+### 5. Describe a Transformation in Markdown
+
+**Export md** on a transformation writes its description, opened next to the
+lab: what it reads, each step in a line and the fields of the result. For a
+transformation that uses an algorithm, the file is `<algorithm>.algorithm.md`
+next to the algorithm.
 
 ## Transformation Operations
 
@@ -162,7 +181,7 @@ throughout the transformation.
 | Merge | Combine data with another list or object using matching fields |
 | Compare | Compare elements with another list |
 | Append | Add elements from another list |
-| Select columns | Keep only selected fields |
+| Output fields | Give the output its fields: each output name taken from a column; a dot makes a nested field (`address.city`) |
 | Remove columns | Exclude selected fields |
 | Flatten | Expand nested structures |
 | Change column | Modify values in an existing field |
@@ -184,7 +203,7 @@ Lists can also be reduced to a single value:
 | Operation | Description |
 |---|---|
 | Merge | Combine an object with another object or list |
-| Select fields | Keep specified fields |
+| Output fields | Give the output its fields, as for a list |
 | Remove fields | Exclude specified fields |
 | Flatten | Move nested fields to the parent level |
 | Change field | Modify an existing field |
