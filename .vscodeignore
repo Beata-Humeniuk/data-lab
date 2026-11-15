@@ -1,0 +1,10 @@
+.gitignore
+.vscodeignore
+src/**
+test/**
+release/**
+scripts/**
+node_modules/**
+package-lock.json
+esbuild.mjs
+CLAUDE.md

@@ -1,0 +1,4 @@
+{
+  "description": "Sample data in any format (JSON, XML, YAML, CSV, key=value) and its transformations step by step — filter, sort, merge, compare, compute — with every step's result as a table.",
+  "command.open.title": "DataLab: Open a lab"
+}

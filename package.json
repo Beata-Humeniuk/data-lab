@@ -1,0 +1,41 @@
+{
+  "name": "data-lab",
+  "displayName": "DataLab",
+  "description": "%description%",
+  "version": "0.1.0",
+  "publisher": "beatahumeniuk",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Beata-Humeniuk/data-lab"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "dataLab.open",
+        "title": "%command.open.title%",
+        "icon": "$(beaker)"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "package": "npm run build && npx --yes --loglevel=error @vscode/vsce@2.32.0 package --no-dependencies",
+    "test": "node test/nls-test.js && node test/sample-formats-test.js && node test/data-pipeline-test.js && node test/lab-pick-test.js && node test/lab-view-smoke-test.js && node test/theme-scheme-test.js"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.0"
+  }
+}
