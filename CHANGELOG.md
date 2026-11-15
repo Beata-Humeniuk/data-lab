@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0] - 2026-11-15
+
+- When Spec Studio is installed and the workspace has its package folder
+  (`<workspace name>-spec`), labs are saved in its `data` folder. The setting
+  `dataLab.useSpecPackage` turns this off; `dataLab.labsFolder` still wins.
+- Fewer texts in the lab: no example placeholders in the input fields, no hints
+  under the expression and the merge, shorter flatten options.
+
 ## [1.0.0] - 2026-11-15
 
 First public release.

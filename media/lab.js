@@ -116,7 +116,7 @@ function renderOverlay() {
   const inp = doc.inputs[i];
   const st = res && res.inputs ? res.inputs[inp.name] : null;
   const data = res && res.inputData ? res.inputData[inp.name] : null;
-  const ta = el('textarea', { 'data-key': 'in' + i + '.text', spellcheck: 'false', placeholder: M('run.samplePh') });
+  const ta = el('textarea', { 'data-key': 'in' + i + '.text', spellcheck: 'false', 'aria-label': M('dv.content') });
   ta.value = inp.text || '';
   ta.addEventListener('input', (e) => { inp.text = e.target.value; changed(); });
   document.body.appendChild(overlay([
@@ -127,7 +127,7 @@ function renderOverlay() {
     el('button', { class: 'link', text: M('dv.removeInput'), onclick: () => { doc.inputs.splice(i, 1); openInput = null; structural(); } })
   ], [
     el('div', { class: 'pane' }, [el('div', { class: 'cap', text: M('dv.content') }), ta]),
-    el('div', { class: 'pane' }, [el('div', { class: 'cap', text: M('dv.preview') }), data ? dataTable(data, [{ label: inp.name, value: data.kind === 'value' ? data.value : data.data }]) : el('div', { class: 'dim', text: M('dv.noPreview') })])
+    el('div', { class: 'pane' }, [el('div', { class: 'cap', text: M('dv.preview') }), data ? dataTable(data, [{ label: inp.name, value: data.kind === 'value' ? data.value : data.data }]) : null])
   ]));
 }
 
@@ -248,8 +248,8 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
           columnPick(k + '.c' + ci + '.f', c.field, cols, (v) => { c.field = v; structural(); }),
           pick(k + '.c' + ci + '.op', c.op || 'eq', OPS.map((o) => [o, M('cond.op.' + o)]), (v) => { c.op = v; structural(); })
         ];
-        if (NO_VALUE.indexOf(c.op) < 0) kids.push(text(k + '.c' + ci + '.v', c.value, (v) => { c.value = v; c.valueKind = 'const'; }, c.op === 'in' || c.op === 'notIn' ? M('dv.valuesPh') : M('dv.valuePh'), 14));
-        if (c.op === 'between') kids.push(lbl(M('dv.andValue')), text(k + '.c' + ci + '.v2', c.value2, (v) => { c.value2 = v; c.value2Kind = 'const'; }, M('dv.valuePh'), 14));
+        if (NO_VALUE.indexOf(c.op) < 0) kids.push(text(k + '.c' + ci + '.v', c.value, (v) => { c.value = v; c.valueKind = 'const'; }, '', 14));
+        if (c.op === 'between') kids.push(lbl(M('dv.andValue')), text(k + '.c' + ci + '.v2', c.value2, (v) => { c.value2 = v; c.value2Kind = 'const'; }, '', 14));
         if (s.conditions.length > 1) kids.push(el('button', { class: 'x', text: '✕', onclick: () => { s.conditions.splice(ci, 1); structural(); } }));
         box.appendChild(row(kids));
       });
@@ -292,7 +292,6 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
         sourcePick(k + '.o', s.other || '', sources, (v) => { s.other = v; s.fields = []; structural(); }, ['list', 'object']),
         kindBefore === 'list' && !otherIsObject ? pick(k + '.keep', s.keep === 'all' ? 'all' : 'matched', [['matched', M('dv.merge.matched')], ['all', M('dv.merge.all')]], (v) => { s.keep = v; structural(); }) : null
       ]));
-      if (otherIsObject) box.appendChild(row([el('span', { class: 'dim', text: M(kindBefore === 'list' ? 'dv.merge.objectIntoEach' : 'dv.merge.objectInto') })]));
       if (!otherIsObject) s.keys.forEach((key, ki) => {
         box.appendChild(row([
           lbl(ki ? M('op.keyAnd') : M('op.keyWhere')),
@@ -330,7 +329,7 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
         pick(k + '.m', s.mode || 'in', [['in', M('dv.cmp.in')], ['notIn', M('dv.cmp.notIn')], ['join', M('dv.cmp.join')]], (v) => { s.mode = v; structural(); }),
         sourcePick(k + '.o', s.other || '', sources, (v) => { s.other = v; structural(); }, 'list'),
         s.mode === 'join' ? lbl(M('op.joinAs')) : null,
-        s.mode === 'join' ? text(k + '.as', s.as, (v) => { s.as = v; }, (s.other || '').split('.').pop() || M('op.joinAsPh'), 10) : null
+        s.mode === 'join' ? text(k + '.as', s.as, (v) => { s.as = v; }, (s.other || '').split('.').pop(), 10) : null
       ]));
       s.keys.forEach((key, ki) => {
         box.appendChild(row([
@@ -399,14 +398,14 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
     }
     case 'add': {
       const from = s.from || 'const';
-      box.appendChild(row([lbl(M('dv.fieldName')), text(k + '.name', s.name, (v) => { s.name = v; }, M('dv.fieldNamePh'), 12), lbl('='),
+      box.appendChild(row([lbl(M('dv.fieldName')), text(k + '.name', s.name, (v) => { s.name = v; }, '', 12), lbl('='),
         pick(k + '.from', from, [['const', M('dv.add.const')], ['column', M('dv.add.column')], ['calc', M('dv.add.calc')], ['parts', M('dv.add.parts')], ['input', M('dv.add.input')], ['expr', M('dv.add.expr')]], (v) => {
           s.from = v;
           if (v === 'parts' && !(s.parts && s.parts.length)) s.parts = [{ kind: 'field', value: '' }, { kind: 'text', value: ' ' }, { kind: 'field', value: '' }];
           if (v === 'calc') s.how = s.how || { kind: '' };
           structural();
         })]));
-      if (from === 'const') box.appendChild(row([lbl(M('dv.valuePh')), text(k + '.v', s.value, (v) => { s.value = v; }, M('dv.valuePh'), 18)]));
+      if (from === 'const') box.appendChild(row([lbl(M('dv.valuePh')), text(k + '.v', s.value, (v) => { s.value = v; }, '', 18)]));
       else if (from === 'column') box.appendChild(row([lbl(M(kindBefore === 'list' ? 'dv.column' : 'dv.field')), columnPick(k + '.c', s.column, cols, (v) => { s.column = v; structural(); })]));
       else if (from === 'input') box.appendChild(row([lbl(M('dv.add.from')), sourcePick(k + '.path', s.path, sources, (v) => { s.path = v; structural(); })]));
       else if (from === 'calc') {
@@ -419,7 +418,7 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
           const pk = k + '.part' + pi2;
           line.appendChild(pick(pk + '.k', part.kind === 'field' ? 'field' : 'text', [['field', M('dv.part.field')], ['text', M('dv.part.text')]], (v) => { part.kind = v; part.value = ''; structural(); }));
           line.appendChild(part.kind === 'field' ? columnPick(pk + '.v', part.value, cols, (v) => { part.value = v; structural(); })
-            : text(pk + '.v', part.value, (v) => { part.value = v; }, M('dv.part.textPh'), 6));
+            : text(pk + '.v', part.value, (v) => { part.value = v; }, '', 6));
           line.appendChild(el('button', { class: 'x', text: '✕', onclick: () => { s.parts.splice(pi2, 1); structural(); } }));
           if (pi2 < s.parts.length - 1) line.appendChild(lbl('+'));
         });
@@ -427,10 +426,9 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
         box.appendChild(row([el('button', { class: 'link', text: M('dv.part.addField'), onclick: () => { s.parts.push({ kind: 'field', value: '' }); structural(); } }),
           el('button', { class: 'link', text: M('dv.part.addText'), onclick: () => { s.parts.push({ kind: 'text', value: '' }); structural(); } })]));
       } else {
-        const t = text(k + '.expr', s.expr, (v) => { s.expr = v; }, 'price * quantity', 40);
+        const t = text(k + '.expr', s.expr, (v) => { s.expr = v; }, '', 40);
         t.classList.add('mono');
         box.appendChild(row([lbl(M('dv.add.expr')), t]));
-        box.appendChild(row([el('span', { class: 'dim', text: M('dv.exprHint') })]));
       }
       break;
     }
@@ -506,12 +504,12 @@ function renderWork() {
       el('span', { class: 'lbl', text: M('dv.from') }),
       sourcePick('p' + pi + '.src', p.source || '', sources, (v) => { p.source = v; structural(); }),
       el('span', { class: 'lbl', text: M('dv.resultName') }),
-      text('p' + pi + '.name', p.name, (v) => { p.name = v.replace(/[^\p{L}\p{N}_]/gu, ''); }, 'result' + (pi + 1), 12),
+      text('p' + pi + '.name', p.name, (v) => { p.name = v.replace(/[^\p{L}\p{N}_]/gu, ''); }, '', 12),
       el('span', { class: 'grow' }),
       el('button', { class: 'x', text: '✕', title: M('dv.removeTransform'), onclick: () => { doc.pipelines.splice(pi, 1); structural(); } })
     ]));
     const body = el('div', { class: 'card-body' });
-    if (!p.source) body.appendChild(el('div', { class: 'dim', text: sources.length ? M('dv.pickSource') : M('dv.noLists') }));
+    if (!p.source && !sources.length) body.appendChild(el('div', { class: 'dim', text: M('dv.noLists') }));
     else if (r && r.sourceView) body.appendChild(table(r.sourceView));
     let cols = r && r.sourceColumns ? r.sourceColumns : [];
     let kindNow = r && r.sourceKind ? r.sourceKind : 'list';

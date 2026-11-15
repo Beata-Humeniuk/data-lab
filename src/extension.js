@@ -3,7 +3,7 @@
 const vscode = require('vscode');
 const path = require('path');
 const { forLanguage } = require('./nls');
-const { LAB_SUFFIX, resolveLabsFolder, slugOf, labIdOf } = require('./labsFolder');
+const { LAB_SUFFIX, resolveLabsFolder, specPackageOf, slugOf, labIdOf } = require('./labsFolder');
 
 function displayLanguage() {
   const ws = vscode.workspace;
@@ -18,9 +18,16 @@ const LEGACY_LAB_FILE = 'lab.json';
 const LOGIC_SPEC = 'beatahumeniuk.logic-spec';
 
 function storageRoot(context) { return vscode.Uri.joinPath(context.globalStorageUri, 'labs'); }
-function labsFolder() {
+const SPEC_STUDIO = 'beatahumeniuk.spec-studio';
+async function specPackage(root) {
+  if (!root || !vscode.extensions.getExtension(SPEC_STUDIO)) return '';
+  if (vscode.workspace.getConfiguration('dataLab', root).get('useSpecPackage') === false) return '';
+  const dir = specPackageOf(root.fsPath);
+  try { return (await vscode.workspace.fs.stat(vscode.Uri.file(dir))).type === vscode.FileType.Directory ? dir : ''; } catch (e) { return ''; }
+}
+async function labsFolder() {
   const root = workspaceRoot();
-  const resolved = resolveLabsFolder(vscode.workspace.getConfiguration('dataLab', root).get('labsFolder'), root ? root.fsPath : '');
+  const resolved = resolveLabsFolder(vscode.workspace.getConfiguration('dataLab', root).get('labsFolder'), root ? root.fsPath : '', await specPackage(root));
   return resolved ? vscode.Uri.file(resolved.folder) : null;
 }
 
@@ -64,7 +71,7 @@ async function labsIn(folder, where) {
   return out;
 }
 async function listLabs(context) {
-  const folder = labsFolder();
+  const folder = await labsFolder();
   const inFolder = folder ? await labsIn(folder, 'folder') : [];
   const inStorage = folder && path.resolve(folder.fsPath) === path.resolve(storageRoot(context).fsPath) ? [] : await labsIn(storageRoot(context), 'storage');
   return inFolder.concat(inStorage).sort((a, b) => b.mtime - a.mtime);
@@ -104,8 +111,9 @@ async function openCommand(context) {
   if (picked.action === 'new') {
     const name = picked.name || await vscode.window.showInputBox({ title: nls.t('lab.pick'), prompt: nls.t('lab.namePrompt'), value: nls.t('lab.nameDefault') + ' ' + (list.length + 1) });
     if (name === undefined) return;
-    const folder = labsFolder() || storageRoot(context);
-    if (!labsFolder()) vscode.window.showInformationMessage(nls.t('lab.noFolder'));
+    const chosen = await labsFolder();
+    const folder = chosen || storageRoot(context);
+    if (!chosen) vscode.window.showInformationMessage(nls.t('lab.noFolder'));
     await vscode.workspace.fs.createDirectory(folder);
     id = slugOf(name, (await labsIn(folder, '')).map((x) => x.id));
     file = vscode.Uri.joinPath(folder, id + LAB_SUFFIX);

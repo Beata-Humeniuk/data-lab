@@ -61,12 +61,18 @@ Enter a name to create a new lab, or select an existing one.
 
 You can also delete existing labs from the selection menu.
 
-Each lab is saved as a `<name>.lab.json` file in the `data` folder of the
-open workspace, so it can be committed with the project. To save labs
-elsewhere, set **DataLab: Labs Folder** (`dataLab.labsFolder`) in the
-settings: a relative path is resolved against the workspace, an absolute path
-is used as it is. Without an open folder and without an absolute path, labs are
-kept in the extension's own storage.
+Each lab is saved as a `<name>.lab.json` file, so it can be committed with the
+project. The folder is chosen in this order:
+
+1. **DataLab: Labs Folder** (`dataLab.labsFolder`), if set. A relative path is
+   resolved against the workspace; an absolute path is used as it is.
+2. The `data` folder of the Spec Studio package (`<workspace name>-spec/data`),
+   when Spec Studio is installed and the package folder exists. Turn this off
+   with **DataLab: Use Spec Package** (`dataLab.useSpecPackage`).
+3. The `data` folder of the workspace.
+
+Without an open folder and without an absolute path, labs are kept in the
+extension's own storage.
 
 ### 2. Add Data Sources
 
