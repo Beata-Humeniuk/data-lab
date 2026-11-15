@@ -9,6 +9,8 @@
 - Named results can be used in every transformation of the lab, not only in
   those below them; the lab works out the order. Their nested lists and objects
   are sources too.
+- Filter conditions show their operators (=, ≠, between, is filled, …)
+  instead of internal keys.
 - Named results are listed under **Results** on the left and open as a table.
 - A result name taken by an input or another result, and a result built from
   itself, are said.
