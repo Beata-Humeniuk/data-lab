@@ -1,7 +1,19 @@
 # Changelog
 
-## [1.2.1] - 2026-11-15
+## [1.3.0] - 2026-11-15
 
+- The left panel holds inputs and transformations apart: **+ Add a
+  transformation** and **+ From an algorithm…** sit there, and the selected
+  transformation opens on the right, one at a time.
+- **Save** (Ctrl+S), **Undo** (Ctrl+Z) and **Redo** (Ctrl+Shift+Z) as in Logic
+  Spec, with an **Unsaved** mark. Changes are written on Save; unsaved ones of
+  a closed lab come back on opening it.
+- **Export md** describes a transformation in a Markdown file: what it reads,
+  its steps and the fields of the result.
+- **Output fields** (formerly Select columns / Select fields): output names
+  first, each taken from a column; a dot in the name makes a nested field.
+  The step starts with the columns of the step before it — after a Merge too;
+  before, it started with the columns from before the Merge and kept them.
 - Merge with all fields of an XML list: fields written as attributes come in
   under their plain names, and one whose name the element already has gets
   the list's name (`Name_Subcategory`). Before, such a field was hidden in

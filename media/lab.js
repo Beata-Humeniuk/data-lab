@@ -24,11 +24,61 @@ let res = null;
 let catalog = [];
 let algorithms = [];
 let sendTimer = null;
-function changed(now) {
-  clearTimeout(sendTimer);
-  sendTimer = setTimeout(() => vscodeApi.postMessage({ type: 'doc', doc }), now ? 0 : 300);
+let selected = 0;
+let dirty = false;
+let savedSnapshot = '';
+const UNDO_LIMIT = 100;
+const UNDO_GROUP_MS = 1500;
+const history = { undo: [], redo: [], current: '', group: '', at: 0 };
+function snapshot() { return JSON.stringify(doc); }
+function resetHistory(saved) {
+  history.undo = []; history.redo = []; history.current = snapshot(); history.group = ''; history.at = 0;
+  savedSnapshot = saved === undefined ? history.current : saved;
 }
+function undoGroup() {
+  const a = document.activeElement;
+  return a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA') ? String(a.getAttribute('data-key') || '') : '';
+}
+function record() {
+  const next = snapshot();
+  if (next === history.current) return;
+  const g = undoGroup();
+  const now = Date.now();
+  const top = history.undo.length ? history.undo[history.undo.length - 1] : null;
+  if (top === next) history.undo.pop();
+  else if (!(g && g === history.group && now - history.at < UNDO_GROUP_MS && history.undo.length)) {
+    history.undo.push(history.current);
+    if (history.undo.length > UNDO_LIMIT) history.undo.shift();
+  }
+  history.current = next; history.redo = []; history.group = g; history.at = now;
+}
+function showDirty() {
+  dirty = history.current !== savedSnapshot;
+  $('dirty').classList.toggle('on', dirty);
+  $('saveBtn').disabled = !dirty;
+  $('undoBtn').disabled = !history.undo.length;
+  $('redoBtn').disabled = !history.redo.length;
+}
+function preview(now) {
+  clearTimeout(sendTimer);
+  sendTimer = setTimeout(() => vscodeApi.postMessage({ type: 'preview', doc }), now ? 0 : 300);
+}
+function changed(now) { record(); showDirty(); preview(now); }
 function structural() { changed(true); render(); }
+function travel(from, to) {
+  if (!from.length) return;
+  to.push(history.current);
+  history.current = from.pop();
+  history.group = '';
+  doc = JSON.parse(history.current);
+  selected = Math.min(selected, Math.max(0, doc.pipelines.length - 1));
+  if (openInput !== null && !doc.inputs[openInput]) openInput = null;
+  showDirty(); preview(true); render();
+}
+function undo() { travel(history.undo, history.redo); }
+function redo() { travel(history.redo, history.undo); }
+let pendingSave = null;
+function save() { clearTimeout(sendTimer); pendingSave = history.current; vscodeApi.postMessage({ type: 'save', doc }); }
 
 function text(key, value, onInput, ph, size) {
   const i = el('input', { type: 'text', 'data-key': key, placeholder: ph || '', value: value == null ? '' : String(value) });
@@ -94,21 +144,40 @@ function renderInputs() {
     doc.inputs.push({ name: 'input' + n, text: '', format: 'auto' });
     openInput = doc.inputs.length - 1;
     structural();
-  } }));  renderResults(box);
+  } }));
+  renderTransformList(box);
 }
-function renderResults(box) {
-  if (!doc.pipelines.length) return;
-  box.appendChild(el('div', { class: 'cap results-cap', text: M('dv.results') }));
-  const named = (res && res.pipelines ? res.pipelines : []).filter((r) => r.resultView && String(r.name || '').trim());
-  if (!named.length) { box.appendChild(el('div', { class: 'dim small', text: M('dv.noResults') })); return; }
-  named.forEach((r) => {
-    const v = r.resultView;
-    const name = String(r.name).trim();
-    box.appendChild(el('button', { type: 'button', class: 'inrow', title: M('dv.openResult'), onclick: () => { drill = [{ label: name, value: v.kind === 'value' ? v.value : v.data }]; render(); } }, [
-      el('span', { class: 'nm', text: name }),
-      el('span', { class: 'meta', text: v.kind === 'value' ? M('dv.kind.value.one') : sizeText(v) })
+function transformTitle(p, pi) {
+  return String(p.name || '').trim() || M('dv.transformN', { n: pi + 1 });
+}
+function resultMeta(r) {
+  if (!r) return '';
+  if (r.error || (r.steps || []).some((x) => x.error)) return M('dv.hasError');
+  const last = (r.steps || []).length ? r.steps[r.steps.length - 1].view : r.sourceView;
+  if (!last) return '';
+  return last.kind === 'value' ? M('dv.kind.value.one') : sizeText(last);
+}
+function addTransform(p) {
+  doc.pipelines.push(p);
+  selected = doc.pipelines.length - 1;
+  openInput = null;
+  structural();
+}
+function renderTransformList(box) {
+  box.appendChild(el('div', { class: 'cap section-cap', text: M('dv.transforms') }));
+  doc.pipelines.forEach((p, pi) => {
+    const r = res && res.pipelines ? res.pipelines[pi] : null;
+    const a = p.algorithm ? algorithms.find((x) => x.id === p.algorithm) : null;
+    const meta = resultMeta(r);
+    box.appendChild(el('button', { type: 'button', class: 'inrow' + (pi === selected ? ' on' : ''), title: M('dv.openTransform'), 'aria-current': pi === selected ? 'true' : null,
+      onclick: () => { selected = pi; render(); $('work').scrollTop = 0; } }, [
+      el('span', { class: 'nm', text: transformTitle(p, pi) }),
+      a ? el('span', { class: 'algo small-algo', text: a.name }) : null,
+      el('span', { class: 'meta' + (meta === M('dv.hasError') ? ' bad' : ''), text: meta })
     ]));
   });
+  box.appendChild(el('button', { class: 'secondary', text: M('dv.addTransform'), onclick: () => addTransform({ name: '', source: '', steps: [] }) }));
+  if (algorithms.length) box.appendChild(el('div', { class: 'row' }, [fromAlgorithm()]));
 }
 function overlay(head, body) {
   return el('div', { id: 'ov', onclick: (e) => { if (e.target.id === 'ov') closeOverlay(); } }, [
@@ -362,15 +431,23 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
       break;
     }
     case 'columns': {
-      s.columns = s.columns && s.columns.length ? s.columns : cols.filter((c) => c !== '').map((c) => ({ from: c, as: '' }));
+      s.columns = Array.isArray(s.columns) ? s.columns : [];
+      const grid = el('div', { class: 'outmap' }, [el('span', { class: 'lbl', text: M('dv.out.field') }), el('span'), el('span', { class: 'lbl', text: M('dv.out.from') }), el('span')]);
       s.columns.forEach((c, ci) => {
-        box.appendChild(row([
-          columnPick(k + '.c' + ci, c.from, cols, (v) => { c.from = v; structural(); }),
-          lbl(M('dv.as')), text(k + '.c' + ci + '.as', c.as, (v) => { c.as = v; }, (c.from || '').split('.').pop(), 12),
-          el('button', { class: 'x', text: '✕', onclick: () => { s.columns.splice(ci, 1); structural(); } })
-        ]));
+        const name = text(k + '.c' + ci + '.as', c.as, (v) => { c.as = v; }, (c.from || '').split('.').pop(), 16);
+        name.setAttribute('aria-label', M('dv.out.field'));
+        grid.appendChild(name);
+        grid.appendChild(el('span', { class: 'lbl', text: '←' }));
+        grid.appendChild(columnPick(k + '.c' + ci, c.from, cols, (v) => { c.from = v; structural(); }));
+        grid.appendChild(el('button', { class: 'x', text: '✕', onclick: () => { s.columns.splice(ci, 1); structural(); } }));
       });
-      box.appendChild(row([el('button', { class: 'link', text: M('dv.addColumn'), onclick: () => { s.columns.push({ from: '', as: '' }); structural(); } })]));
+      box.appendChild(grid);
+      const missing = cols.filter((c) => c !== '' && !s.columns.some((x) => x.from === c));
+      box.appendChild(row([
+        el('button', { class: 'link', text: M('dv.addColumn'), onclick: () => { s.columns.push({ from: '', as: '' }); structural(); } }),
+        missing.length ? columnPick(k + '.more', '', missing, (v) => { if (v) s.columns.push({ from: v, as: '' }); structural(); }, M('dv.out.addFrom')) : null
+      ]));
+      box.appendChild(el('div', { class: 'dim small', text: M('dv.out.hint') }));
       break;
     }
     case 'drop': {
@@ -495,7 +572,8 @@ function stepLabel(kind, on) {
   return NLS[k] ? M(k) : M('dv.step.' + kind);
 }
 const VALUE_STEPS = ['first', 'last', 'nth', 'count', 'sum', 'min', 'max', 'avg', 'join'];
-function newStep(kind) {
+function newStep(kind, cols) {
+  if (kind === 'columns') return { kind, columns: (cols || []).filter((c) => c !== '').map((c) => ({ from: c, as: '' })) };
   if (kind === 'filter') return { kind, conditions: [{ field: '', op: 'eq', value: '', valueKind: 'const' }] };
   if (kind === 'compare') return { kind, mode: 'in', other: '', keys: [{ a: '', b: '' }] };
   if (kind === 'nth') return { kind, index: '0' };
@@ -526,8 +604,7 @@ function fromAlgorithm() {
   s.addEventListener('change', (e) => {
     const a = algorithms.find((x) => x.id === e.target.value);
     if (!a) return;
-    doc.pipelines.push({ name: '', source: '', algorithm: a.id, steps: JSON.parse(JSON.stringify(a.steps || [])) });
-    structural();
+    addTransform({ name: '', source: '', algorithm: a.id, steps: JSON.parse(JSON.stringify(a.steps || [])) });
   });
   return s;
 }
@@ -540,9 +617,12 @@ function nameField(pi, p) {
 function renderWork() {
   const box = $('work');
   box.textContent = '';
-  box.appendChild(el('div', { class: 'cap', text: M('dv.transforms') }));
+  if (selected >= doc.pipelines.length) selected = Math.max(0, doc.pipelines.length - 1);
+  box.appendChild(el('div', { class: 'cap', text: doc.pipelines[selected] ? transformTitle(doc.pipelines[selected], selected) : M('dv.transforms') }));
   if (!doc.inputs.length || !doc.pipelines.length) box.appendChild(el('div', { class: 'help', text: M('dv.help') }));
+  if (selected >= doc.pipelines.length) selected = Math.max(0, doc.pipelines.length - 1);
   doc.pipelines.forEach((p, pi) => {
+    if (pi !== selected) return;
     const r = res && res.pipelines ? res.pipelines[pi] : null;
     const sources = r ? r.sources : [];
     const colsOf = (path) => (res && res.columnsOf ? res.columnsOf[path] || [] : []);
@@ -554,7 +634,8 @@ function renderWork() {
       nameField(pi, p),
       el('span', { class: 'grow' })
     ].concat(algorithmControls(p, pi), [
-      el('button', { class: 'x', text: '✕', title: M('dv.removeTransform'), onclick: () => { doc.pipelines.splice(pi, 1); structural(); } })
+      el('button', { class: 'link', text: M('dv.exportMd'), title: M('dv.exportMdTitle'), onclick: () => { clearTimeout(sendTimer); vscodeApi.postMessage({ type: 'exportMd', index: pi, doc }); } }),
+      el('button', { class: 'x', text: '✕', title: M('dv.removeTransform'), onclick: () => { doc.pipelines.splice(pi, 1); selected = Math.max(0, pi - 1); structural(); } })
     ])));
     const body = el('div', { class: 'card-body' });
     if (r && r.nameError) body.appendChild(el('div', { class: 'err', text: errorText(r.nameError) }));
@@ -566,6 +647,7 @@ function renderWork() {
     (p.steps || []).forEach((s, si) => {
       const sr = r && r.steps ? r.steps[si] : null;
       if (sr && sr.columns) cols = sr.columns;
+      else if (!sr && r && r.endColumns) cols = r.endColumns;
       if (sr && sr.kindBefore) kindNow = sr.kindBefore;
       const st = el('div', { class: 'step' });
       st.appendChild(el('div', { class: 'step-head' }, [
@@ -583,7 +665,7 @@ function renderWork() {
     const broken = r && r.steps && r.steps.some((x) => x.error);
     if (p.source && r && r.sourceView && !broken) {
       const adds = el('div', { class: 'adds' }, [el('span', { class: 'lbl', text: M('dv.addStep') + ' (' + M('dv.kind.' + endKind + '.one') + ')' })]);
-      const button = (kind) => adds.appendChild(el('button', { class: 'secondary', text: stepLabel(kind, endKind), onclick: () => { (p.steps = p.steps || []).push(newStep(kind)); structural(); } }));
+      const button = (kind) => adds.appendChild(el('button', { class: 'secondary', text: stepLabel(kind, endKind), onclick: () => { (p.steps = p.steps || []).push(newStep(kind, r.endColumns || cols)); structural(); } }));
       if (endKind === 'list') {
         LIST_STEPS.concat(['add']).forEach(button);
         adds.appendChild(el('span', { class: 'lbl', text: '  ' + M('dv.takeOne') }));
@@ -603,16 +685,12 @@ function renderWork() {
     card.appendChild(body);
     box.appendChild(card);
   });
-  if (doc.inputs.length) box.appendChild(el('div', { class: 'row' }, [
-    el('button', { class: 'primary', text: M('dv.addTransform'), onclick: () => { doc.pipelines.push({ name: '', source: '', steps: [] }); structural(); } }),
-    algorithms.length ? fromAlgorithm() : null
-  ]));
 }
 
 function render() {
   const a = document.activeElement;
   const key = a && a.getAttribute ? a.getAttribute('data-key') : null;
-  const sel = a && typeof a.selectionStart === 'number' ? [a.selectionStart, a.selectionEnd] : null;
+  const caret = a && typeof a.selectionStart === 'number' ? [a.selectionStart, a.selectionEnd] : null;
   const scrolls = [$('inputs').scrollTop, $('work').scrollTop];
   const ovBody = document.querySelector('#ovBody .tbl-wrap');
   const ovScroll = ovBody ? ovBody.scrollTop : 0;
@@ -625,17 +703,30 @@ function render() {
   if (ovAgain) ovAgain.scrollTop = ovScroll;
   if (key) {
     const again = document.querySelector('[data-key="' + key.replace(/"/g, '\\"') + '"]');
-    if (again) { again.focus(); if (sel && typeof again.setSelectionRange === 'function') try { again.setSelectionRange(sel[0], sel[1]); } catch (e) {                        } }
+    if (again) { again.focus(); if (caret && typeof again.setSelectionRange === 'function') try { again.setSelectionRange(caret[0], caret[1]); } catch (e) {                        } }
   }
 }
 
 $('asFlow').addEventListener('click', () => vscodeApi.postMessage({ type: 'openAsFlow' }));
+$('undoBtn').addEventListener('click', undo);
+$('redoBtn').addEventListener('click', redo);
+$('saveBtn').addEventListener('click', save);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && (openInput !== null || drill)) { e.preventDefault(); closeOverlay(); } });
 window.addEventListener('message', (e) => {
   const m = e.data || {};
   if (m.algorithms) algorithms = m.algorithms;
-  if (m.type === 'load') { doc = m.doc || doc; catalog = m.catalog || []; $('title').textContent = m.title || ''; res = m.result || null; render(); }
+  if (m.type === 'load') {
+    doc = m.doc || doc; catalog = m.catalog || catalog; $('title').textContent = m.title || ''; res = m.result || null;
+    resetHistory(typeof m.saved === 'string' ? m.saved : undefined);
+    showDirty(); render();
+  }
   if (m.type === 'result') { res = m.result; render(); }
+  if (m.type === 'saved') { if (pendingSave !== null) savedSnapshot = pendingSave; pendingSave = null; if (m.result) res = m.result; showDirty(); render(); }
+  if (m.type === 'linked') { doc = m.doc; history.current = snapshot(); if (typeof m.saved === 'string') savedSnapshot = m.saved; res = m.result || res; showDirty(); render(); }
+  if (m.type === 'algorithmSaved') { const p = doc.pipelines[m.index]; if (p) { p.algorithm = m.id; structural(); } }
+  if (m.type === 'undo') undo();
+  if (m.type === 'redo') redo();
+  if (m.type === 'save') save();
   if (m.type === 'fileLoaded') { if (doc.inputs[m.index]) { doc.inputs[m.index].text = m.text; structural(); } }
 });
 vscodeApi.postMessage({ type: 'ready' });

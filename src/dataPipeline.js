@@ -467,7 +467,7 @@ function picked(el, step) {
   const out = {};
   for (const c of (step.columns || []).filter((x) => String(x.from || '').trim())) {
     const v = cell(el, c.from);
-    out[String(c.as || '').trim() || c.from.split('.').pop()] = v === undefined ? null : clone(v);
+    setPath(out, String(c.as || '').trim() || c.from.split('.').pop(), v === undefined ? null : clone(v));
   }
   return out;
 }

@@ -190,6 +190,10 @@ async function openLab(context, file, id) {
   let lab = normalizeLab(await readJson(file), id);
   let algorithms = await listAlgorithms(context);
   if (algo.linkedSteps(lab, algorithms)) await writeJson(file, lab);
+  const draftKey = 'dataLab.draft:' + key;
+  const kept = context.workspaceState.get(draftKey);
+  let draft = kept && typeof kept === 'object' ? normalizeLab(Object.assign({}, kept, { name: lab.name }), lab.name) : null;
+  if (draft) algo.linkedSteps(draft, algorithms);
   if (panels.has(key)) { panels.get(key).panel.reveal(vscode.ViewColumn.Active); return; }
   const panel = vscode.window.createWebviewPanel('dataLab', nls.t('lab.title', { name: lab.name }), vscode.ViewColumn.Active,
     { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
@@ -197,17 +201,19 @@ async function openLab(context, file, id) {
   panel.webview.html = buildLabHtml(displayLanguage());
   const algorithmList = () => Object.values(algorithms).map((a) => ({ id: a.id, name: a.name || a.id, steps: a.steps }))
     .sort((a, b) => a.name.localeCompare(b.name));
-  const docOf = () => ({ inputs: lab.inputs, pipelines: lab.pipelines, format: lab.format });
+  const current = () => draft || lab;
+  const docOf = (l) => { const x = l || current(); return { inputs: x.inputs, pipelines: x.pipelines, format: x.format }; };
+  const savedText = () => JSON.stringify(docOf(lab));
   const compute = () => {
     let r;
     try { r = dp.runDocument(docOf(), {}); } catch (e) { return { inputs: {}, pipelines: [], error: String(e && e.message || e) }; }
-    const fmt = dp.RESULT_FORMATS.indexOf(lab.format) >= 0 ? lab.format : 'json';
+    const fmt = dp.RESULT_FORMATS.indexOf(current().format) >= 0 ? current().format : 'json';
     const columnsOf = {};
     const paths = new Set();
     r.pipelines.forEach((p) => p.sources.forEach((s) => paths.add(s.path)));
     for (const p of paths) columnsOf[p] = dp.columnsOf(dp.asList(dp.valueAt(r.root, p)));
     r.pipelines.forEach((p, i) => {
-      if (p.result !== undefined && p.result !== null) p.text = dp.outputText(p.result, fmt, String((lab.pipelines[i] || {}).name || '').trim() || 'result');
+      if (p.result !== undefined && p.result !== null) p.text = dp.outputText(p.result, fmt, String((current().pipelines[i] || {}).name || '').trim() || 'result');
       delete p.result;
     });
     delete r.root;
@@ -215,18 +221,35 @@ async function openLab(context, file, id) {
     return r;
   };
   const catalog = dp.changeCatalog(nls.t);
-  const sendLoad = () => panel.webview.postMessage({ type: 'load', doc: docOf(), catalog, title: nls.t('lab.title', { name: lab.name }), result: compute(), algorithms: algorithmList() });
-  const takeDoc = (d) => { if (d && typeof d === 'object') lab = normalizeLab(Object.assign({}, d, { name: lab.name }), lab.name); };
-  panels.set(key, { panel, refresh: async () => {
+  const sendLoad = () => panel.webview.postMessage({ type: 'load', doc: docOf(), saved: savedText(), catalog, title: nls.t('lab.title', { name: lab.name }), result: compute(), algorithms: algorithmList() });
+  const keepDraft = async (d) => {
+    if (!d || typeof d !== 'object') return;
+    draft = normalizeLab(Object.assign({}, d, { name: lab.name }), lab.name);
+    if (JSON.stringify(docOf(draft)) === savedText()) draft = null;
+    await context.workspaceState.update(draftKey, draft ? docOf(draft) : undefined);
+  };
+  panels.set(key, { panel, send: (type) => panel.webview.postMessage({ type }), refresh: async () => {
     algorithms = await listAlgorithms(context);
     if (algo.linkedSteps(lab, algorithms)) await writeJson(file, lab);
-    sendLoad();
+    if (draft) { algo.linkedSteps(draft, algorithms); await context.workspaceState.update(draftKey, docOf(draft)); }
+    panel.webview.postMessage({ type: 'linked', doc: docOf(), saved: savedText(), result: compute(), algorithms: algorithmList() });
   } });
   panel.onDidDispose(() => panels.delete(key));
   panel.webview.onDidReceiveMessage(async (m) => {
-    if (m.type === 'ready') { sendLoad(); return; }
-    if (m.type === 'doc' && m.doc && typeof m.doc === 'object') {
-      takeDoc(m.doc);
+    if (m.type === 'ready') {
+      sendLoad();
+      if (draft) vscode.window.showInformationMessage(nls.t('lab.unsavedKept', { name: lab.name }));
+      return;
+    }
+    if (m.type === 'preview') {
+      await keepDraft(m.doc);
+      panel.webview.postMessage({ type: 'result', result: compute() });
+      return;
+    }
+    if (m.type === 'save' && m.doc && typeof m.doc === 'object') {
+      lab = normalizeLab(Object.assign({}, m.doc, { name: lab.name }), lab.name);
+      draft = null;
+      await context.workspaceState.update(draftKey, undefined);
       const edited = algo.editedAlgorithms(lab, algorithms);
       const ids = Object.keys(edited);
       for (const aid of ids) {
@@ -236,24 +259,37 @@ async function openLab(context, file, id) {
       const siblings = ids.length > 0 && algo.linkedSteps(lab, algorithms);
       await writeJson(file, lab);
       if (siblings) sendLoad();
-      else panel.webview.postMessage({ type: 'result', result: compute(), algorithms: algorithmList() });
+      else panel.webview.postMessage({ type: 'saved', result: compute(), algorithms: algorithmList() });
       if (ids.length) refreshPanels(key);
       return;
     }
     if (m.type === 'saveAlgorithm') {
-      takeDoc(m.doc);
-      await writeJson(file, lab);
-      const p = lab.pipelines[m.index];
+      await keepDraft(m.doc);
+      const p = current().pipelines[m.index];
       if (!p) return;
       const name = await vscode.window.showInputBox({ title: nls.t('alg.save'), prompt: nls.t('alg.namePrompt'), value: String(p.name || '').trim() || nls.t('alg.nameDefault') });
       if (!name || !name.trim()) return;
       const aid = await saveAlgorithm(context, name, p.steps);
       algorithms = await listAlgorithms(context);
-      p.algorithm = aid;
-      await writeJson(file, lab);
-      sendLoad();
+      panel.webview.postMessage({ type: 'algorithmSaved', index: m.index, id: aid, algorithms: algorithmList() });
       refreshPanels(key);
       vscode.window.showInformationMessage(nls.t('alg.saved', { name: name.trim() }));
+      return;
+    }
+    if (m.type === 'exportMd') {
+      await keepDraft(m.doc);
+      const p = current().pipelines[m.index];
+      if (!p) return;
+      const { algorithmMd } = require('./algorithmMd');
+      let run = null;
+      try { run = dp.runDocument(docOf(), {}).pipelines[m.index]; } catch (e) { run = null; }
+      const a = p.algorithm ? algorithms[p.algorithm] : null;
+      const title = a ? a.name : String(p.name || '').trim() || nls.t('dv.transformN', { n: m.index + 1 });
+      const target = a ? vscode.Uri.joinPath(a.file, '..', a.id + '.algorithm.md')
+        : vscode.Uri.joinPath(file, '..', id + '.' + slugOf(title, []) + '.md');
+      await vscode.workspace.fs.writeFile(target, Buffer.from(algorithmMd({ title, pipeline: p, run, catalog }), 'utf8'));
+      await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(target), { preview: false, viewColumn: vscode.ViewColumn.Beside });
+      vscode.window.showInformationMessage(nls.t('md.saved', { file: path.basename(target.fsPath) }));
       return;
     }
     if (m.type === 'pickFile') {
@@ -272,14 +308,19 @@ async function openLab(context, file, id) {
     if (m.type === 'openAsFlow') {
       if (!vscode.extensions.getExtension(LOGIC_SPEC)) { vscode.window.showWarningMessage(nls.t('lab.noLogicSpec')); return; }
       await vscode.commands.executeCommand('logicSpec.openLabFlow', {
-        id, name: lab.name, inputs: lab.inputs.map((x) => ({ name: x.name, text: x.text || '', format: x.format || 'auto' }))
+        id, name: lab.name, inputs: current().inputs.map((x) => ({ name: x.name, text: x.text || '', format: x.format || 'auto' }))
       });
     }
   });
 }
 
+function sendToActivePanel(type) {
+  for (const entry of panels.values()) if (entry.panel.active) { entry.send(type); return; }
+}
+
 function activate(context) {
-  context.subscriptions.push(vscode.commands.registerCommand('dataLab.open', () => openCommand(context)));
+  context.subscriptions.push(vscode.commands.registerCommand('dataLab.open', () => openCommand(context)),
+    ...['save', 'undo', 'redo'].map((type) => vscode.commands.registerCommand('dataLab.' + type, () => sendToActivePanel(type))));
 }
 function deactivate() {}
 
