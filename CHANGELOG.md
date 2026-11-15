@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.4.0] - 2026-11-15
+
+- Steps move up and down with the **↑** and **↓** arrows next to them.
+- **Copy** next to **Open in editor** puts the result on the clipboard.
+- **comment before each element** under the result: the value of a chosen
+  field goes before each element as a comment — `<!-- … -->` in XML, `# …`
+  in YAML and properties, `// …` in JSON (opened as JSON with comments). The
+  field can stay in the data or be left out. CSV has no comments.
+- A transformation has its own name, any text, at the top of it: the list and
+  the md show it. The result name stays the name other transformations use;
+  renaming it renames it in the transformations that use it, and a character
+  a result name cannot have becomes `_` as it is typed.
+- Change column, Add field and Output fields on a field an XML attribute
+  holds (`Name="…"`) write the new value into that field; before, it went
+  into a new field next to it and the table kept showing the old value, so
+  **in capitals** or **in lowercase** looked as if it did nothing.
+- Change column with no transformation picked and a name in **save as**
+  renames the column, in its place; with a transformation, **save as** still
+  puts the result into a new column and keeps this one. A line under it says
+  which.
+- **replace a text** with nothing to find leaves the text as it is; before, it
+  put the new text between every two letters.
+
 ## [1.3.0] - 2026-11-15
 
 - The left panel holds inputs and transformations apart: **+ Add a

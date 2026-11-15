@@ -195,11 +195,19 @@ function stepsFor(kind) {
   return VALUE_ONLY_STEPS;
 }
 
+// A field an XML attribute holds (@Name) is written where it is, not next to it.
+function keyIn(node, seg) {
+  return !Object.prototype.hasOwnProperty.call(node, seg) && Object.prototype.hasOwnProperty.call(node, '@' + seg) ? '@' + seg : seg;
+}
 function setPath(obj, path, value) {
   const segs = String(path).split('.').filter(Boolean);
   let cur = obj;
-  for (let i = 0; i < segs.length - 1; i++) { if (!isPlainObject(cur[segs[i]])) cur[segs[i]] = {}; cur = cur[segs[i]]; }
-  cur[segs[segs.length - 1]] = value === undefined ? null : value;
+  for (let i = 0; i < segs.length - 1; i++) {
+    const k = keyIn(cur, segs[i]);
+    if (!isPlainObject(cur[k])) cur[k] = {};
+    cur = cur[k];
+  }
+  cur[keyIn(cur, segs[segs.length - 1])] = value === undefined ? null : value;
   return obj;
 }
 function removeAt(node, segs) {
@@ -412,10 +420,46 @@ function csvText(v) {
   return [cols.map(quote).join(',')].concat(rows.map((r) => cols.map((c) => quote(isPlainObject(r) ? tableCell(r, c) : (c === 'value' ? r : undefined))).join(','))).join('\n') + '\n';
 }
 const RESULT_FORMATS = ['json', 'xml', 'yaml', 'properties', 'csv'];
-function outputText(v, format, name) {
+function plainOutput(v, format, name) {
   if (format === 'csv') return csvText(v);
   if (format === 'xml') return serialize(v, 'xml', name);
   return serialize(unmarked(v), RESULT_FORMATS.indexOf(format) >= 0 ? format : 'json', name);
+}
+// A comment before each element of a list (before an object: one), its text
+// the value of one of the element's fields. CSV has no comments.
+const COMMENT_FORMATS = ['json', 'xml', 'yaml', 'properties'];
+function commentLine(text, format, indent) {
+  const t = String(text).replace(/\s*[\r\n]+\s*/g, ' ').trim();
+  if (format === 'xml') return indent + '<!-- ' + t.replace(/--/g, '- -').replace(/-$/, '- ') + ' -->';
+  if (format === 'json') return indent + '// ' + t;
+  return indent + '# ' + t;
+}
+function outputText(v, format, name, opts) {
+  const field = String((opts && opts.commentField) || '').trim();
+  if (!field || COMMENT_FORMATS.indexOf(format) < 0 || (!Array.isArray(v) && !isPlainObject(v))) return plainOutput(v, format, name);
+  const list = Array.isArray(v) ? v : [v];
+  const texts = list.map((el) => { const c = isPlainObject(el) ? cell(el, field) : undefined; return c === undefined || c === null || typeof c === 'object' ? '' : textOf(c); });
+  const data = opts.keepField === false ? list.map((el) => (isPlainObject(el) ? removePath(clone(el), field) : el)) : list;
+  const value = Array.isArray(v) ? data : data[0];
+  if (format === 'json' && !Array.isArray(v)) return (texts[0] ? commentLine(texts[0], 'json', '') + '\n' : '') + plainOutput(value, format, name);
+  if (format === 'json') {
+    const parts = data.map((el, i) => (texts[i] ? commentLine(texts[i], 'json', '  ') + '\n' : '') + JSON.stringify(unmarked(el), null, 2).replace(/^/gm, '  '));
+    return parts.length ? '[\n' + parts.join(',\n') + '\n]\n' : '[]\n';
+  }
+  const lines = plainOutput(value, format, name).split('\n');
+  const out = [];
+  let i = 0;
+  const starts = format === 'yaml' ? (l) => /^- /.test(l) || (!Array.isArray(v) && out.length === 0 && l !== '')
+    : format === 'properties' ? (l) => (Array.isArray(v) ? l.indexOf(name + '[' + i + ']') === 0 : out.length === 0)
+    : (l) => /^  <[^/!?]/.test(l);
+  for (const l of lines) {
+    if (i < texts.length && starts(l)) {
+      if (texts[i]) out.push(commentLine(texts[i], format, format === 'xml' ? '  ' : ''));
+      i++;
+    }
+    out.push(l);
+  }
+  return out.join('\n');
 }
 function dropped(el, step) {
   if (!isPlainObject(el)) return el;
@@ -462,6 +506,24 @@ function changed(el, step, scope, ctx) {
   if (!isPlainObject(el)) return r.value === undefined ? null : r.value;
   const to = String(step.as || '').trim() || col;
   return setPath(clone(el), to, r.value);
+}
+// Change column with no transformation and another name: the column renamed,
+// in its place when it is a field of the element itself.
+function renamed(el, step) {
+  const from = String(step.field || '').trim();
+  const to = String(step.as || '').trim();
+  if (!from || !to || to === from || !isPlainObject(el)) return el;
+  const v = cell(el, from);
+  if (v === undefined) return el;
+  if (from.indexOf('.') < 0 && to.indexOf('.') < 0) {
+    const key = Object.prototype.hasOwnProperty.call(el, from) ? from : '@' + from;
+    const out = {};
+    for (const k of Object.keys(el)) { if (k === key) out[to] = clone(v); else if (k !== to) out[k] = clone(el[k]); }
+    return out;
+  }
+  const out = clone(el);
+  removePath(out, from);
+  return setPath(out, to, clone(v));
 }
 function picked(el, step) {
   const out = {};
@@ -517,7 +579,7 @@ function stepOn(cur, step, root, ctx) {
       case 'columns': return (step.columns || []).some((x) => String(x.from || '').trim()) ? picked(cur, step) : cur;
       case 'drop': return dropped(cur, step);
       case 'flatten': { const r = flattened([cur], step); return r.length === 1 ? r[0] : r; }
-      case 'change': return String(step.field || '').trim() && step.how && step.how.kind ? changed(cur, step, scope, ctx) : cur;
+      case 'change': return String(step.field || '').trim() && step.how && step.how.kind ? changed(cur, step, scope, ctx) : renamed(cur, step);
       case 'add': return String(step.name || '').trim() ? setPath(clone(cur), step.name.trim(), addedValue(step, cur, root, scope, ctx, columnsOf([cur]))) : cur;
       case 'take': { if (!String(step.field || '').trim()) return cur; const v = cell(cur, step.field); return v === undefined ? null : v; }
       case 'asList': return [cur];
@@ -548,7 +610,7 @@ function stepOn(cur, step, root, ctx) {
       return list.concat(asList(valueAt(root, step.other)).map(clone));
     }
     case 'columns': return (step.columns || []).some((x) => String(x.from || '').trim()) ? list.map((el) => picked(el, step)) : list;
-    case 'change': return String(step.field || '').trim() && step.how && step.how.kind ? list.map((el) => changed(el, step, scope, ctx)) : list;
+    case 'change': return String(step.field || '').trim() && step.how && step.how.kind ? list.map((el) => changed(el, step, scope, ctx)) : list.map((el) => renamed(el, step));
     case 'drop': return list.map((el) => dropped(el, step));
     case 'flatten': return flattened(list, step);
     case 'add': {
@@ -648,4 +710,4 @@ function changeCatalog(t) {
     params: k.params.map((p) => ({ key: p.key, label: p.labelKey ? t(p.labelKey) : p.key, def: p.def, size: p.size, options: p.options })) }));
 }
 
-module.exports = { RESULT_FORMATS, outputText, csvText, deepFields, STEP_KINDS, LIST_STEPS, VALUE_STEPS, OBJECT_STEPS, stepsFor, kindOf, readInputs, listsIn, sourcesOf, columnsOf, runDocument, view, valueAt, asList, changeCatalog };
+module.exports = { RESULT_FORMATS, COMMENT_FORMATS, outputText, csvText, deepFields, STEP_KINDS, LIST_STEPS, VALUE_STEPS, OBJECT_STEPS, stepsFor, kindOf, readInputs, listsIn, sourcesOf, columnsOf, runDocument, view, valueAt, asList, changeCatalog };

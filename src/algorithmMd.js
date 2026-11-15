@@ -97,7 +97,8 @@ function stepText(s, catalog) {
     case 'drop': return 'Remove the fields ' + list((s.fields || []).filter(Boolean));
     case 'flatten': return (s.field ? 'Flatten ' + code(s.field) : 'Flatten all nested objects') +
       (s.names === 'own' ? ', fields under their own names' : ', field names prefixed with the parent') + (s.keepEmpty === false ? ', elements without items left out' : '');
-    case 'change': return 'Change ' + (s.field ? code(s.field) : 'the value') + ': ' + (s.how && s.how.kind ? howText(s.how, catalog) : 'no change') +
+    case 'change': if (!(s.how && s.how.kind) && String(s.as || '').trim()) return 'Rename ' + code(s.field) + ' to ' + code(s.as);
+      return 'Change ' + (s.field ? code(s.field) : 'the value') + ': ' + (s.how && s.how.kind ? howText(s.how, catalog) : 'no change') +
       (String(s.as || '').trim() ? ', saved as ' + code(s.as) : '');
     case 'add': return addedText(s, catalog);
     case 'take': return 'Take the field ' + code(s.field);
@@ -143,6 +144,7 @@ function algorithmMd(opts) {
   const steps = p.steps || [];
   if (!steps.length) lines.push('No steps.');
   steps.forEach((s, i) => lines.push((i + 1) + '. ' + stepText(s, opts.catalog)));
+  if (p.comment && String(p.comment.field || '').trim()) lines.push('', 'Before each element of the result, a comment: the value of ' + code(p.comment.field) + (p.comment.keep === false ? ', the field left out of the data.' : '.'));
   if (run && run.result !== undefined && run.result !== null) {
     const v = run.result;
     lines.push('', '## Output', '');

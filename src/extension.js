@@ -213,7 +213,9 @@ async function openLab(context, file, id) {
     r.pipelines.forEach((p) => p.sources.forEach((s) => paths.add(s.path)));
     for (const p of paths) columnsOf[p] = dp.columnsOf(dp.asList(dp.valueAt(r.root, p)));
     r.pipelines.forEach((p, i) => {
-      if (p.result !== undefined && p.result !== null) p.text = dp.outputText(p.result, fmt, String((current().pipelines[i] || {}).name || '').trim() || 'result');
+      const pl = current().pipelines[i] || {};
+      const comment = pl.comment && typeof pl.comment === 'object' ? pl.comment : {};
+      if (p.result !== undefined && p.result !== null) p.text = dp.outputText(p.result, fmt, String(pl.name || '').trim() || 'result', { commentField: comment.field, keepField: comment.keep !== false });
       delete p.result;
     });
     delete r.root;
@@ -267,7 +269,7 @@ async function openLab(context, file, id) {
       await keepDraft(m.doc);
       const p = current().pipelines[m.index];
       if (!p) return;
-      const name = await vscode.window.showInputBox({ title: nls.t('alg.save'), prompt: nls.t('alg.namePrompt'), value: String(p.name || '').trim() || nls.t('alg.nameDefault') });
+      const name = await vscode.window.showInputBox({ title: nls.t('alg.save'), prompt: nls.t('alg.namePrompt'), value: String(p.title || '').trim() || String(p.name || '').trim() || nls.t('alg.nameDefault') });
       if (!name || !name.trim()) return;
       const aid = await saveAlgorithm(context, name, p.steps);
       algorithms = await listAlgorithms(context);
@@ -284,7 +286,7 @@ async function openLab(context, file, id) {
       let run = null;
       try { run = dp.runDocument(docOf(), {}).pipelines[m.index]; } catch (e) { run = null; }
       const a = p.algorithm ? algorithms[p.algorithm] : null;
-      const title = a ? a.name : String(p.name || '').trim() || nls.t('dv.transformN', { n: m.index + 1 });
+      const title = String(p.title || '').trim() || (a ? a.name : String(p.name || '').trim()) || nls.t('dv.transformN', { n: m.index + 1 });
       const target = a ? vscode.Uri.joinPath(a.file, '..', a.id + '.algorithm.md')
         : vscode.Uri.joinPath(file, '..', id + '.' + slugOf(title, []) + '.md');
       await vscode.workspace.fs.writeFile(target, Buffer.from(algorithmMd({ title, pipeline: p, run, catalog }), 'utf8'));
@@ -300,8 +302,13 @@ async function openLab(context, file, id) {
       panel.webview.postMessage({ type: 'fileLoaded', index: m.index, text });
       return;
     }
+    if (m.type === 'copyOutput') {
+      await vscode.env.clipboard.writeText(String(m.text || ''));
+      vscode.window.setStatusBarMessage(nls.t('dv.copied'), 2000);
+      return;
+    }
     if (m.type === 'openOutput') {
-      const d = await vscode.workspace.openTextDocument({ language: outputLanguage(m.format), content: String(m.text || '') });
+      const d = await vscode.workspace.openTextDocument({ language: m.comments && outputLanguage(m.format) === 'json' ? 'jsonc' : outputLanguage(m.format), content: String(m.text || '') });
       await vscode.window.showTextDocument(d, { preview: false, viewColumn: vscode.ViewColumn.Beside });
       return;
     }

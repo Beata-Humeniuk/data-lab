@@ -486,7 +486,8 @@ function howStep(h, cur, base, scopes, ctx, env) {
       case 'upper': return t().toUpperCase();
       case 'lower': return t().toLowerCase();
       case 'round': { const f = Math.pow(10, numberOf(h.n || '0', true)); const x = numberOf(v, true); return Math.round((x + Math.sign(x) * Number.EPSILON) * f) / f; }
-      case 'replace': return t().split(String(h.find || '')).join(String(h.with || ''));
+      // Nothing to find: nothing replaced (an empty text matches between every two letters).
+      case 'replace': return String(h.find || '') === '' ? t() : t().split(String(h.find)).join(String(h.with || ''));
       case 'replaceRegex': try { return t().replace(new RegExp(String(h.pattern || ''), 'g'), String(h.with || '')); } catch (e) { throw new RunError('badRegex', { value: h.pattern }); }
       case 'extract': {
         let re;

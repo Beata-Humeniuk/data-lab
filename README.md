@@ -105,7 +105,8 @@ The left panel holds the two parts of a lab apart: **Inputs** (the data) and
 **+ From an algorithm…**, and the transformation opens on the right. Select a
 transformation in the list to open it; one is shown at a time.
 
-Choose the data you want to transform in **from**.
+Give the transformation a name at the top of it, any text; the list and the
+md show it. Choose the data you want to transform in **from**.
 
 You can start from:
 
@@ -145,7 +146,9 @@ the lab. A named result:
 - Is listed by its name under **Transformations** on the left.
 - Always reflects the current inputs and steps.
 
-A result name must differ from the input names and the other result names. A
+A result name holds letters, digits and `_`; renaming it renames it in the
+transformations that use it. It must differ from the input names and the
+other result names. A
 transformation cannot use a result that is built from its own result.
 
 Add operations one step at a time. Available operations automatically adapt to
@@ -153,6 +156,9 @@ the current data type.
 
 Each step provides a preview, allowing you to inspect how the data changes
 throughout the transformation.
+
+Move a step with the **↑** and **↓** arrows next to it; the steps after it run
+again in the new order.
 
 ### 4. Save, Undo and Redo
 
@@ -184,7 +190,7 @@ next to the algorithm.
 | Output fields | Give the output its fields: each output name taken from a column; a dot makes a nested field (`address.city`) |
 | Remove columns | Exclude selected fields |
 | Flatten | Expand nested structures |
-| Change column | Modify values in an existing field |
+| Change column | Modify values in an existing field; with no transformation and a name in **save as**, rename it |
 | Add field | Create a new field |
 | Skip / Take | Skip elements or keep the first elements |
 
@@ -267,8 +273,13 @@ Inspect the final result of your transformation and choose an output format:
 
 CSV output follows the structure displayed in the result table.
 
+**comment before each element** puts the value of a chosen field before each
+element of the result as a comment: `<!-- … -->` in XML, `# …` in YAML and
+properties, `// …` in JSON (JSON with comments). The field can stay in the
+data or be left out. CSV has no comments.
+
 Select **Open in editor** to open the generated result in a new VS Code editor
-tab.
+tab, or **Copy** to put it on the clipboard.
 
 ## Logic Spec Integration
 

@@ -213,3 +213,62 @@ runChecks([
     [JSON.stringify(some.steps[0].view.data[0]) === JSON.stringify({ Name: 'Konto A', ProductTypeCode: '100', Name_Subcategory: 'Sub A', Kind: 'X' }), 'all fields or the chosen ones: the same names']
   ]);
 }
+
+{
+  const d = { inputs: [{ name: 'l', text: '[{"Name":"Konto PLUS"}]' }], pipelines: [
+    { name: 'empty', source: 'l', steps: [{ kind: 'change', field: 'Name', how: { kind: 'replace', find: '', with: 'INDV,JOIN' } }] },
+    { name: 'some', source: 'l', steps: [{ kind: 'change', field: 'Name', how: { kind: 'replace', find: 'PLUS', with: 'MAX' } }] },
+    { name: 'fixed', source: 'l', steps: [{ kind: 'change', field: 'Name', how: { kind: 'constant', value: 'INDV,JOIN', then: [{ kind: 'split', sep: ',' }] } }] }
+  ] };
+  const r7 = runDocument(d, {});
+  const q = (n) => r7.pipelines.find((x) => x.name === n).result[0].Name;
+  runChecks([
+    [q('empty') === 'Konto PLUS', 'replace with nothing to find leaves the text as it is'],
+    [q('some') === 'Konto MAX', 'replace a text'],
+    [JSON.stringify(q('fixed')) === '["INDV","JOIN"]', 'a fixed value, split into a list']
+  ]);
+}
+
+{
+  const d = { inputs: [{ name: 'x', text: '<L><P Name="Konto Plus" Code="1"><Info Kind="a"/></P><P Name="e-Konto" Code="2"><Info Kind="b"/></P></L>' }], pipelines: [
+    { name: 'u', source: 'x.P', steps: [{ kind: 'change', field: 'Name', how: { kind: 'upper' } }, { kind: 'change', field: 'Info.Kind', how: { kind: 'upper' } }] },
+    { name: 'w', source: 'x.P', steps: [{ kind: 'change', field: 'Name', how: { kind: 'lower' } }, { kind: 'change', field: 'Name', as: 'Small', how: { kind: 'upper' } }] }
+  ] };
+  const r8 = runDocument(d, {});
+  const q = (n) => r8.pipelines.find((x) => x.name === n).result[0];
+  runChecks([
+    [JSON.stringify(q('u')) === '{"@Name":"KONTO PLUS","@Code":"1","Info":{"@Kind":"A"}}', 'an XML attribute changed where it is, nested too: ' + JSON.stringify(q('u'))],
+    [q('w')['@Name'] === 'konto plus' && q('w').Small === 'KONTO PLUS' && !('Name' in q('w')), 'in lowercase; saved as another field: a field of its own']
+  ]);
+}
+
+{
+  const d = { inputs: [{ name: 'l', text: '[{"Name":"A","ProductTypeCode":"1","variants":"X"}]' }, { name: 'x', text: '<L><P Code="1" Name="n"/><P Code="2" Name="m"/></L>' }], pipelines: [
+    { name: 'a', source: 'l', steps: [{ kind: 'change', field: 'ProductTypeCode', as: 'type', how: { kind: '' } }] },
+    { name: 'b', source: 'x.P', steps: [{ kind: 'change', field: 'Code', as: 'type' }] },
+    { name: 'c', source: 'l', steps: [{ kind: 'change', field: 'Name', as: 'info.name' }] },
+    { name: 'd', source: 'l', steps: [{ kind: 'change', field: 'ProductTypeCode', as: 'type', how: { kind: 'upper' } }] }
+  ] };
+  const r9 = runDocument(d, {});
+  const q = (n) => JSON.stringify(r9.pipelines.find((x) => x.name === n).result[0]);
+  runChecks([
+    [q('a') === '{"Name":"A","type":"1","variants":"X"}', 'no transformation and another name: the column renamed in its place'],
+    [q('b') === '{"type":"1","@Name":"n"}', 'an XML attribute renamed'],
+    [q('c') === '{"ProductTypeCode":"1","variants":"X","info":{"name":"A"}}', 'renamed into a nested field'],
+    [q('d') === '{"Name":"A","ProductTypeCode":"1","variants":"X","type":"1"}', 'with a transformation: the result in another column, this one stays']
+  ]);
+}
+
+{
+  const { outputText } = require('../src/dataPipeline');
+  const v = [{ Name: 'Konto A', code: '1' }, { Name: 'Konto B', code: '2' }];
+  const o = (f, keep) => outputText(v, f, 'result', { commentField: 'Name', keepField: keep });
+  runChecks([
+    [o('xml', true).includes('  <!-- Konto A -->\n  <item>') && o('xml', true).includes('  <!-- Konto B -->\n  <item>'), 'XML: a comment before each element'],
+    [o('yaml', false).startsWith("# Konto A\n- code: '1'") && o('yaml', false).includes("# Konto B\n- code: '2'"), 'YAML: a comment before each element, the field left out'],
+    [o('properties', true).startsWith('# Konto A\nresult[0].Name=Konto A') && o('properties', true).includes('# Konto B\nresult[1].Name'), 'properties: a comment before each element'],
+    [o('json', true).startsWith('[\n  // Konto A\n  {') && o('json', true).includes('  // Konto B\n  {'), 'JSON with comments'],
+    [o('csv', true) === outputText(v, 'csv', 'result'), 'CSV: no comments'],
+    [outputText(v, 'xml', 'result', { commentField: 'Name' }).indexOf('<!--') > 0 && !outputText([{ Name: 'a--b' }], 'xml', 'r', { commentField: 'Name' }).includes('a--b -->'), 'no -- inside an XML comment']
+  ]);
+}
