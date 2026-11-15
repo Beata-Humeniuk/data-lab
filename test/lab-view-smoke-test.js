@@ -10,7 +10,8 @@ runChecks([
   [['Filter', 'Sort', 'Remove duplicates', 'Reverse', 'Merge', 'Compare', 'Append', 'Select columns', 'Remove columns', 'Flatten', 'Change column', 'Add field', 'Skip', 'Take'].every((x) => d.includes('"' + x + '"')), 'list steps named as in the README'],
   [['First', 'Last', 'Element at index', 'Count', 'Sum', 'Minimum', 'Maximum', 'Average'].every((x) => d.includes('"' + x + '"')), 'list endings named as in the README'],
   [['Select fields', 'Remove fields', 'Change field', 'Get field', 'Convert to list'].every((x) => d.includes('"' + x + '"')), 'object steps named as in the README'],
-  [d.includes("type: 'doc'") && d.includes("type: 'pickFile'") && d.includes("type: 'openOutput'") && d.includes("type: 'openAsFlow'") && d.includes("type: 'ready'"), 'lab view host protocol'],
+  [d.includes("type: 'doc'") && d.includes("type: 'pickFile'") && d.includes("type: 'openOutput'") && d.includes("type: 'openAsFlow'") && d.includes("type: 'saveAlgorithm'") && d.includes("type: 'ready'"), 'lab view host protocol'],
+  [['"cond.op.eq"', '"cond.op.isSet"', '"cond.op.lenMax"'].every((x) => d.includes(x)), 'filter conditions have labels, not keys'],
   [buildTwice(), 'a fresh nonce for every page']
 ]);
 function buildTwice() {

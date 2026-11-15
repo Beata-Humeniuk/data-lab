@@ -22,6 +22,7 @@ function el(tag, attrs, kids) {
 let doc = { inputs: [], pipelines: [] };
 let res = null;
 let catalog = [];
+let algorithms = [];
 let sendTimer = null;
 function changed(now) {
   clearTimeout(sendTimer);
@@ -45,13 +46,16 @@ function pick(key, value, options, onChange, title) {
 function sourcePick(key, value, sources, onChange, only) {
   const s = el('select', { 'data-key': key });
   s.appendChild(el('option', { value: '', text: only === 'list' ? M('op.pickList') : M('dv.pickSource') }));
+  const allowed = (kind) => !only || (Array.isArray(only) ? only.indexOf(kind) >= 0 : only === kind);
+  const option = (x) => el('option', { value: x.path,
+    text: x.path.split('.').join(' › ') + (x.kind === 'list' && x.count !== null && x.count !== undefined ? ' (' + x.count + ')' : '') });
   for (const kind of ['list', 'object', 'value']) {
-    if (only && (Array.isArray(only) ? only.indexOf(kind) < 0 : only !== kind)) continue;
-    const items = sources.filter((x) => x.kind === kind);
-    if (!items.length) continue;
-    s.appendChild(el('optgroup', { label: M('dv.kind.' + kind) }, items.map((x) => el('option', { value: x.path,
-      text: x.path.split('.').join(' › ') + (kind === 'list' && x.count !== null && x.count !== undefined ? ' (' + x.count + ')' : '') }))));
+    if (!allowed(kind)) continue;
+    const items = sources.filter((x) => x.kind === kind && !x.result);
+    if (items.length) s.appendChild(el('optgroup', { label: M('dv.kind.' + kind) }, items.map(option)));
   }
+  const results = sources.filter((x) => x.result && allowed(x.kind));
+  if (results.length) s.appendChild(el('optgroup', { label: M('dv.results') }, results.map(option)));
   s.value = value || '';
   if (value && s.value !== value) { s.appendChild(el('option', { value, text: value })); s.value = value; }
   s.addEventListener('change', (e) => onChange(e.target.value));
@@ -90,7 +94,21 @@ function renderInputs() {
     doc.inputs.push({ name: 'input' + n, text: '', format: 'auto' });
     openInput = doc.inputs.length - 1;
     structural();
-  } }));
+  } }));  renderResults(box);
+}
+function renderResults(box) {
+  if (!doc.pipelines.length) return;
+  box.appendChild(el('div', { class: 'cap results-cap', text: M('dv.results') }));
+  const named = (res && res.pipelines ? res.pipelines : []).filter((r) => r.resultView && String(r.name || '').trim());
+  if (!named.length) { box.appendChild(el('div', { class: 'dim small', text: M('dv.noResults') })); return; }
+  named.forEach((r) => {
+    const v = r.resultView;
+    const name = String(r.name).trim();
+    box.appendChild(el('button', { type: 'button', class: 'inrow', title: M('dv.openResult'), onclick: () => { drill = [{ label: name, value: v.kind === 'value' ? v.value : v.data }]; render(); } }, [
+      el('span', { class: 'nm', text: name }),
+      el('span', { class: 'meta', text: v.kind === 'value' ? M('dv.kind.value.one') : sizeText(v) })
+    ]));
+  });
 }
 function overlay(head, body) {
   return el('div', { id: 'ov', onclick: (e) => { if (e.target.id === 'ov') closeOverlay(); } }, [
@@ -490,6 +508,35 @@ function newStep(kind) {
   return { kind };
 }
 
+function algorithmControls(p, pi) {
+  if (!p.algorithm) {
+    if (!(p.steps || []).length) return [];
+    return [el('button', { class: 'link', text: M('dv.saveAlgorithm'), title: M('dv.saveAlgorithmTitle'),
+      onclick: () => { clearTimeout(sendTimer); vscodeApi.postMessage({ type: 'saveAlgorithm', index: pi, doc }); } })];
+  }
+  const a = algorithms.find((x) => x.id === p.algorithm);
+  return [
+    el('span', { class: 'algo' + (a ? '' : ' bad'), title: a ? M('dv.algorithmTitle') : null, text: a ? M('dv.algorithm', { name: a.name }) : M('dv.algorithmMissing') }),
+    el('button', { class: 'link', text: M('dv.unlinkAlgorithm'), title: M('dv.unlinkAlgorithmTitle'), onclick: () => { delete p.algorithm; structural(); } })
+  ];
+}
+function fromAlgorithm() {
+  const s = el('select', { 'data-key': 'fromAlgorithm', 'aria-label': M('dv.fromAlgorithm') }, [el('option', { value: '', text: M('dv.fromAlgorithm') })]
+    .concat(algorithms.map((a) => el('option', { value: a.id, text: a.name }))));
+  s.addEventListener('change', (e) => {
+    const a = algorithms.find((x) => x.id === e.target.value);
+    if (!a) return;
+    doc.pipelines.push({ name: '', source: '', algorithm: a.id, steps: JSON.parse(JSON.stringify(a.steps || [])) });
+    structural();
+  });
+  return s;
+}
+function nameField(pi, p) {
+  const t = text('p' + pi + '.name', p.name, (v) => { p.name = v.replace(/[^\p{L}\p{N}_]/gu, ''); }, '', 12);
+  t.title = M('dv.resultNameTitle');
+  t.setAttribute('aria-label', M('dv.resultName'));
+  return t;
+}
 function renderWork() {
   const box = $('work');
   box.textContent = '';
@@ -504,12 +551,15 @@ function renderWork() {
       el('span', { class: 'lbl', text: M('dv.from') }),
       sourcePick('p' + pi + '.src', p.source || '', sources, (v) => { p.source = v; structural(); }),
       el('span', { class: 'lbl', text: M('dv.resultName') }),
-      text('p' + pi + '.name', p.name, (v) => { p.name = v.replace(/[^\p{L}\p{N}_]/gu, ''); }, '', 12),
-      el('span', { class: 'grow' }),
+      nameField(pi, p),
+      el('span', { class: 'grow' })
+    ].concat(algorithmControls(p, pi), [
       el('button', { class: 'x', text: '✕', title: M('dv.removeTransform'), onclick: () => { doc.pipelines.splice(pi, 1); structural(); } })
-    ]));
+    ])));
     const body = el('div', { class: 'card-body' });
+    if (r && r.nameError) body.appendChild(el('div', { class: 'err', text: errorText(r.nameError) }));
     if (!p.source && !sources.length) body.appendChild(el('div', { class: 'dim', text: M('dv.noLists') }));
+    else if (r && r.error) body.appendChild(el('div', { class: 'err', text: errorText(r.error) }));
     else if (r && r.sourceView) body.appendChild(table(r.sourceView));
     let cols = r && r.sourceColumns ? r.sourceColumns : [];
     let kindNow = r && r.sourceKind ? r.sourceKind : 'list';
@@ -553,7 +603,10 @@ function renderWork() {
     card.appendChild(body);
     box.appendChild(card);
   });
-  if (doc.inputs.length) box.appendChild(el('button', { class: 'primary', text: M('dv.addTransform'), onclick: () => { doc.pipelines.push({ name: '', source: '', steps: [] }); structural(); } }));
+  if (doc.inputs.length) box.appendChild(el('div', { class: 'row' }, [
+    el('button', { class: 'primary', text: M('dv.addTransform'), onclick: () => { doc.pipelines.push({ name: '', source: '', steps: [] }); structural(); } }),
+    algorithms.length ? fromAlgorithm() : null
+  ]));
 }
 
 function render() {
@@ -580,6 +633,7 @@ $('asFlow').addEventListener('click', () => vscodeApi.postMessage({ type: 'openA
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && (openInput !== null || drill)) { e.preventDefault(); closeOverlay(); } });
 window.addEventListener('message', (e) => {
   const m = e.data || {};
+  if (m.algorithms) algorithms = m.algorithms;
   if (m.type === 'load') { doc = m.doc || doc; catalog = m.catalog || []; $('title').textContent = m.title || ''; res = m.result || null; render(); }
   if (m.type === 'result') { res = m.result; render(); }
   if (m.type === 'fileLoaded') { if (doc.inputs[m.index]) { doc.inputs[m.index].text = m.text; structural(); } }

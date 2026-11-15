@@ -72,7 +72,7 @@
   "scripts": {
     "build": "esbuild src/extension.js --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --minify --charset=utf8",
     "vscode:prepublish": "npm run build",
-    "test": "node test/nls-test.js && node test/sample-formats-test.js && node test/data-pipeline-test.js && node test/flatten-test.js && node test/lab-pick-test.js && node test/labs-folder-test.js && node test/lab-view-smoke-test.js && node test/theme-scheme-test.js",
+    "test": "node test/nls-test.js && node test/sample-formats-test.js && node test/data-pipeline-test.js && node test/algorithms-test.js && node test/flatten-test.js && node test/lab-pick-test.js && node test/labs-folder-test.js && node test/lab-view-smoke-test.js && node test/theme-scheme-test.js",
     "package": "npm run build && vsce package --no-dependencies"
   },
   "dependencies": {
