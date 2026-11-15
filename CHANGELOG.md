@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1] - 2026-11-15
+
+- Merge with all fields of an XML list: fields written as attributes come in
+  under their plain names, and one whose name the element already has gets
+  the list's name (`Name_Subcategory`). Before, such a field was hidden in
+  the tables and the next steps did not see it.
+
 ## [1.2.0] - 2026-11-15
 
 - Algorithms: the steps of a transformation saved apart from the data, as

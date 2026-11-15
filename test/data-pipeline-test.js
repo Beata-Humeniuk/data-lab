@@ -196,3 +196,20 @@ runChecks([
     [q('raport').resultView.kind === 'list' && q('raport').resultView.count === 2, 'a named result has its own view']
   ]);
 }
+
+{
+  const defs = '<L><Group><Category><Subcategory Name="Sub A" Kind="X"><Type Code="100"/></Subcategory><Subcategory Name="Sub B" Kind="Y"><Type Code="200"/></Subcategory></Category></Group></L>';
+  const prods = '[{"Name":"Konto A","ProductTypeCode":"100"},{"Name":"Konto B","ProductTypeCode":"200"}]';
+  const mk = (fields) => ({ inputs: [{ name: 'prods', text: prods }, { name: 'defs', text: defs }], pipelines: [{ name: 'r', source: 'prods', steps: [
+    { kind: 'merge', other: 'defs.Group.Category.Subcategory', keep: 'matched', keys: [{ a: 'ProductTypeCode', b: 'Type.Code' }], fields },
+    { kind: 'filter', conditions: [{ field: 'Kind', op: 'eq', value: 'Y', valueKind: 'const' }] }
+  ] }] });
+  const all = runDocument(mk([]), {}).pipelines[0];
+  const some = runDocument(mk(['Name', 'Kind']), {}).pipelines[0];
+  const row = all.steps[0].view.data[0];
+  runChecks([
+    [row.Name === 'Konto A' && row.Name_Subcategory === 'Sub A' && row.Kind === 'X' && !('@Name' in row) && !('@Kind' in row), 'XML attributes merged under their plain names; a taken name gets the list\'s name'],
+    [all.steps[1].columns.indexOf('Name_Subcategory') >= 0 && all.result.length === 1 && all.result[0].Name === 'Konto B', 'the next step sees the merged fields'],
+    [JSON.stringify(some.steps[0].view.data[0]) === JSON.stringify({ Name: 'Konto A', ProductTypeCode: '100', Name_Subcategory: 'Sub A', Kind: 'X' }), 'all fields or the chosen ones: the same names']
+  ]);
+}
