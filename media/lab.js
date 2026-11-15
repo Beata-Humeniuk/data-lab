@@ -743,7 +743,13 @@ function renderWork() {
       body.appendChild(el('div', { class: 'row result-row' }, [
         el('span', { class: 'lbl', text: M('dv.result') }),
         pick('p' + pi + '.fmt', doc.format || 'json', [['json', 'JSON'], ['xml', 'XML'], ['yaml', 'YAML'], ['csv', 'CSV'], ['properties', 'properties']], (v) => { doc.format = v; structural(); }),
-        el('button', { class: 'link', text: M('run.openEditor'), onclick: () => vscodeApi.postMessage({ type: 'openOutput', text: r.text, format: doc.format || 'json', comments: !!(p.comment && p.comment.field) }) })
+        el('button', { class: 'link', text: M('run.openEditor'), onclick: () => vscodeApi.postMessage({ type: 'openOutput', text: r.text, format: doc.format || 'json', comments: !!(p.comment && p.comment.field) }) }),
+        el('button', { class: 'link', 'data-key': 'p' + pi + '.copy', text: M('dv.copy'), title: M('dv.copyTitle'), onclick: (e) => {
+          vscodeApi.postMessage({ type: 'copyOutput', text: r.text });
+          const b = e.currentTarget;
+          b.textContent = M('dv.copied');
+          setTimeout(() => { if (b.isConnected) b.textContent = M('dv.copy'); }, 1500);
+        } })
       ]));
       body.appendChild(commentRow(p, pi, r));
       body.appendChild(el('pre', { text: r.text }));

@@ -3,6 +3,7 @@
 ## [1.4.0] - 2026-11-15
 
 - Steps move up and down with the **↑** and **↓** arrows next to them.
+- **Copy** next to **Open in editor** puts the result on the clipboard.
 - **comment before each element** under the result: the value of a chosen
   field goes before each element as a comment — `<!-- … -->` in XML, `# …`
   in YAML and properties, `// …` in JSON (opened as JSON with comments). The

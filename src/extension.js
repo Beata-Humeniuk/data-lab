@@ -302,6 +302,11 @@ async function openLab(context, file, id) {
       panel.webview.postMessage({ type: 'fileLoaded', index: m.index, text });
       return;
     }
+    if (m.type === 'copyOutput') {
+      await vscode.env.clipboard.writeText(String(m.text || ''));
+      vscode.window.setStatusBarMessage(nls.t('dv.copied'), 2000);
+      return;
+    }
     if (m.type === 'openOutput') {
       const d = await vscode.workspace.openTextDocument({ language: m.comments && outputLanguage(m.format) === 'json' ? 'jsonc' : outputLanguage(m.format), content: String(m.text || '') });
       await vscode.window.showTextDocument(d, { preview: false, viewColumn: vscode.ViewColumn.Beside });

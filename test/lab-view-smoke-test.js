@@ -10,7 +10,7 @@ runChecks([
   [['Filter', 'Sort', 'Remove duplicates', 'Reverse', 'Merge', 'Compare', 'Append', 'Output fields', 'Remove columns', 'Flatten', 'Change column', 'Add field', 'Skip', 'Take'].every((x) => d.includes('"' + x + '"')), 'list steps named as in the README'],
   [['First', 'Last', 'Element at index', 'Count', 'Sum', 'Minimum', 'Maximum', 'Average'].every((x) => d.includes('"' + x + '"')), 'list endings named as in the README'],
   [['Output fields', 'Remove fields', 'Change field', 'Get field', 'Convert to list'].every((x) => d.includes('"' + x + '"')), 'object steps named as in the README'],
-  [d.includes("type: 'preview'") && d.includes("type: 'save'") && d.includes("type: 'exportMd'") && d.includes("type: 'pickFile'") && d.includes("type: 'openOutput'") && d.includes("type: 'openAsFlow'") && d.includes("type: 'saveAlgorithm'") && d.includes("type: 'ready'"), 'lab view host protocol'],
+  [d.includes("type: 'preview'") && d.includes("type: 'save'") && d.includes("type: 'exportMd'") && d.includes("type: 'copyOutput'") && d.includes("type: 'pickFile'") && d.includes("type: 'openOutput'") && d.includes("type: 'openAsFlow'") && d.includes("type: 'saveAlgorithm'") && d.includes("type: 'ready'"), 'lab view host protocol'],
   [['"cond.op.eq"', '"cond.op.isSet"', '"cond.op.lenMax"'].every((x) => d.includes(x)), 'filter conditions have labels, not keys'],
   [d.includes('id="undoBtn"') && d.includes('id="redoBtn"') && d.includes('id="saveBtn"') && d.includes('id="dirty"'), 'undo, redo, save and the unsaved mark in the header'],
   [d.includes('"Move the step up"') && d.includes('"Move the step down"') && d.includes('function moveStep('), 'steps move up and down'],
@@ -31,6 +31,7 @@ runChecks([
   [host.includes('localResourceRoots: []'), 'the webview reads no local files'],
   [host.includes("getConfiguration('dataLab'") && host.includes('LAB_SUFFIX'), 'labs saved in the configured folder, one file each'],
   [['save', 'undo', 'redo'].every((x) => pkg.contributes.keybindings.some((k) => k.command === 'dataLab.' + x && /activeWebviewPanelId == 'dataLab'/.test(k.when))) && host.includes("registerCommand('dataLab.' + type"), 'Ctrl+S, Ctrl+Z and Ctrl+Shift+Z work in the lab view'],
+  [host.includes("m.type === 'copyOutput'") && host.includes('vscode.env.clipboard.writeText'), 'Copy puts the result on the clipboard'],
   [host.includes("m.type === 'preview'") && /m\.type === 'preview'[\s\S]{0,120}keepDraft/.test(host) && !/m\.type === 'preview'[\s\S]{0,200}writeJson\(file/.test(host), 'a change is previewed and kept as a draft; only Save writes the lab'],
   [!/writeFile\([^)]*workspace/i.test(host) && !host.includes('workspaceFolders[0].uri, '), 'nothing written outside the labs folder']
 ]);
