@@ -148,7 +148,7 @@ function renderInputs() {
   renderTransformList(box);
 }
 function transformTitle(p, pi) {
-  return String(p.name || '').trim() || M('dv.transformN', { n: pi + 1 });
+  return String(p.title || '').trim() || String(p.name || '').trim() || M('dv.transformN', { n: pi + 1 });
 }
 function resultMeta(r) {
   if (!r) return '';
@@ -608,10 +608,44 @@ function fromAlgorithm() {
   });
   return s;
 }
+function titleField(pi, p) {
+  const t = text('p' + pi + '.title', p.title, (v) => { p.title = v; }, M('dv.transformN', { n: pi + 1 }), 24);
+  t.classList.add('title-in');
+  t.title = M('dv.transformNameTitle');
+  t.setAttribute('aria-label', M('dv.transformName'));
+  return t;
+}
+const NAME_CHARS = /[^\p{L}\p{N}_]/gu;
+function renameResult(from, to) {
+  const head = (path) => String(path || '').split('.')[0];
+  const moved = (path) => (head(path) === from ? to + String(path).slice(from.length) : path);
+  const word = new RegExp('(^|[^\\p{L}\\p{N}_.])' + from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\p{L}\\p{N}_])', 'gu');
+  for (const q of doc.pipelines) {
+    q.source = moved(q.source);
+    for (const s of q.steps || []) {
+      if (s.other) s.other = moved(s.other);
+      if (s.from === 'input' && s.path) s.path = moved(s.path);
+      if (s.from === 'expr' && s.expr) s.expr = String(s.expr).replace(word, (m, pre) => pre + to);
+    }
+  }
+}
 function nameField(pi, p) {
-  const t = text('p' + pi + '.name', p.name, (v) => { p.name = v.replace(/[^\p{L}\p{N}_]/gu, ''); }, '', 12);
+  let before = String(p.name || '');
+  const t = text('p' + pi + '.name', p.name, (v) => {
+    const clean = v.replace(NAME_CHARS, '_');
+    if (clean !== v) { const at = t.selectionStart; t.value = clean; try { t.setSelectionRange(at, at); } catch (e) { /* not a text field */ } }
+    p.name = clean;
+  }, '', 14);
   t.title = M('dv.resultNameTitle');
   t.setAttribute('aria-label', M('dv.resultName'));
+  t.addEventListener('focus', () => { before = String(p.name || ''); });
+  t.addEventListener('change', () => {
+    const now = String(p.name || '').trim();
+    const taken = doc.inputs.some((x) => x.name === now) || doc.pipelines.some((x) => x !== p && String(x.name || '').trim() === now);
+    if (before && now && before !== now && !taken) renameResult(before, now);
+    before = now;
+    structural();
+  });
   return t;
 }
 function moveStep(p, si, by) {
@@ -625,7 +659,7 @@ function renderWork() {
   const box = $('work');
   box.textContent = '';
   if (selected >= doc.pipelines.length) selected = Math.max(0, doc.pipelines.length - 1);
-  box.appendChild(el('div', { class: 'cap', text: doc.pipelines[selected] ? transformTitle(doc.pipelines[selected], selected) : M('dv.transforms') }));
+  if (!doc.pipelines[selected]) box.appendChild(el('div', { class: 'cap', text: M('dv.transforms') }));
   if (!doc.inputs.length || !doc.pipelines.length) box.appendChild(el('div', { class: 'help', text: M('dv.help') }));
   if (selected >= doc.pipelines.length) selected = Math.max(0, doc.pipelines.length - 1);
   doc.pipelines.forEach((p, pi) => {
@@ -634,16 +668,19 @@ function renderWork() {
     const sources = r ? r.sources : [];
     const colsOf = (path) => (res && res.columnsOf ? res.columnsOf[path] || [] : []);
     const card = el('div', { class: 'card' });
-    card.appendChild(el('div', { class: 'card-head' }, [
-      el('span', { class: 'lbl', text: M('dv.from') }),
-      sourcePick('p' + pi + '.src', p.source || '', sources, (v) => { p.source = v; structural(); }),
-      el('span', { class: 'lbl', text: M('dv.resultName') }),
-      nameField(pi, p),
+    card.appendChild(el('div', { class: 'card-head title-row' }, [
+      titleField(pi, p),
       el('span', { class: 'grow' })
     ].concat(algorithmControls(p, pi), [
       el('button', { class: 'link', text: M('dv.exportMd'), title: M('dv.exportMdTitle'), onclick: () => { clearTimeout(sendTimer); vscodeApi.postMessage({ type: 'exportMd', index: pi, doc }); } }),
       el('button', { class: 'x', text: '✕', title: M('dv.removeTransform'), onclick: () => { doc.pipelines.splice(pi, 1); selected = Math.max(0, pi - 1); structural(); } })
     ])));
+    card.appendChild(el('div', { class: 'card-head' }, [
+      el('span', { class: 'lbl', text: M('dv.from') }),
+      sourcePick('p' + pi + '.src', p.source || '', sources, (v) => { p.source = v; structural(); }),
+      el('span', { class: 'lbl', text: M('dv.resultName') }),
+      nameField(pi, p)
+    ]));
     const body = el('div', { class: 'card-body' });
     if (r && r.nameError) body.appendChild(el('div', { class: 'err', text: errorText(r.nameError) }));
     if (!p.source && !sources.length) body.appendChild(el('div', { class: 'dim', text: M('dv.noLists') }));

@@ -3,6 +3,10 @@
 ## [1.4.0] - 2026-11-15
 
 - Steps move up and down with the **↑** and **↓** arrows next to them.
+- A transformation has its own name, any text, at the top of it: the list and
+  the md show it. The result name stays the name other transformations use;
+  renaming it renames it in the transformations that use it, and a character
+  a result name cannot have becomes `_` as it is typed.
 - **replace a text** with nothing to find leaves the text as it is; before, it
   put the new text between every two letters.
 

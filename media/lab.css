@@ -86,6 +86,9 @@ td.n,th.n{color:var(--dim);width:1%}
 .count{font-size:11.5px;color:var(--dim);margin-top:4px}
 .value{font-family:var(--mono);font-size:14px;padding:8px 10px;border:1px solid var(--border);border-radius:5px;margin-top:6px;display:inline-block;min-width:80px}
 .err{color:var(--err);font-size:12px;margin-top:6px}
+.title-row{border-bottom:none;padding-bottom:0}
+.title-in{font-size:14px;font-weight:600;min-width:220px;background:transparent;border:1px solid transparent}
+.title-in:hover,.title-in:focus{border-color:var(--border)}
 .section-cap{margin-top:18px;padding-top:12px;border-top:1px solid var(--border)}
 .inrow.on{border-color:var(--focus);background:var(--hover)}
 .small-algo{font-size:10px;padding:1px 6px;white-space:nowrap}

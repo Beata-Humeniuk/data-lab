@@ -105,7 +105,8 @@ The left panel holds the two parts of a lab apart: **Inputs** (the data) and
 **+ From an algorithm…**, and the transformation opens on the right. Select a
 transformation in the list to open it; one is shown at a time.
 
-Choose the data you want to transform in **from**.
+Give the transformation a name at the top of it, any text; the list and the
+md show it. Choose the data you want to transform in **from**.
 
 You can start from:
 
@@ -145,7 +146,9 @@ the lab. A named result:
 - Is listed by its name under **Transformations** on the left.
 - Always reflects the current inputs and steps.
 
-A result name must differ from the input names and the other result names. A
+A result name holds letters, digits and `_`; renaming it renames it in the
+transformations that use it. It must differ from the input names and the
+other result names. A
 transformation cannot use a result that is built from its own result.
 
 Add operations one step at a time. Available operations automatically adapt to

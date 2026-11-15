@@ -14,6 +14,7 @@ runChecks([
   [['"cond.op.eq"', '"cond.op.isSet"', '"cond.op.lenMax"'].every((x) => d.includes(x)), 'filter conditions have labels, not keys'],
   [d.includes('id="undoBtn"') && d.includes('id="redoBtn"') && d.includes('id="saveBtn"') && d.includes('id="dirty"'), 'undo, redo, save and the unsaved mark in the header'],
   [d.includes('"Move the step up"') && d.includes('"Move the step down"') && d.includes('function moveStep('), 'steps move up and down'],
+  [d.includes('function titleField(') && d.includes('function renameResult(') && d.includes('"Name of the transformation"'), 'a transformation has its own name; a renamed result follows to its users'],
   [buildTwice(), 'a fresh nonce for every page']
 ]);
 function buildTwice() {

@@ -267,7 +267,7 @@ async function openLab(context, file, id) {
       await keepDraft(m.doc);
       const p = current().pipelines[m.index];
       if (!p) return;
-      const name = await vscode.window.showInputBox({ title: nls.t('alg.save'), prompt: nls.t('alg.namePrompt'), value: String(p.name || '').trim() || nls.t('alg.nameDefault') });
+      const name = await vscode.window.showInputBox({ title: nls.t('alg.save'), prompt: nls.t('alg.namePrompt'), value: String(p.title || '').trim() || String(p.name || '').trim() || nls.t('alg.nameDefault') });
       if (!name || !name.trim()) return;
       const aid = await saveAlgorithm(context, name, p.steps);
       algorithms = await listAlgorithms(context);
@@ -284,7 +284,7 @@ async function openLab(context, file, id) {
       let run = null;
       try { run = dp.runDocument(docOf(), {}).pipelines[m.index]; } catch (e) { run = null; }
       const a = p.algorithm ? algorithms[p.algorithm] : null;
-      const title = a ? a.name : String(p.name || '').trim() || nls.t('dv.transformN', { n: m.index + 1 });
+      const title = String(p.title || '').trim() || (a ? a.name : String(p.name || '').trim()) || nls.t('dv.transformN', { n: m.index + 1 });
       const target = a ? vscode.Uri.joinPath(a.file, '..', a.id + '.algorithm.md')
         : vscode.Uri.joinPath(file, '..', id + '.' + slugOf(title, []) + '.md');
       await vscode.workspace.fs.writeFile(target, Buffer.from(algorithmMd({ title, pipeline: p, run, catalog }), 'utf8'));
