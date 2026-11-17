@@ -1021,4 +1021,4 @@ function stepsNeedingResults(flow) {
       hasSample: s.type === 'externalCall' && !!(s.responseSample && String(s.responseSample.body || '').trim() && s.responseSample.format !== 'binary') }));
 }
 
-module.exports = { same, runHow, runFlow, runStream, evalCondition, evalConditions, stepsNeedingResults, outputName, DATA_STEPS };
+module.exports = { same, cmp, runHow, runFlow, runStream, evalCondition, evalConditions, stepsNeedingResults, outputName, DATA_STEPS };

@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.5.0] - 2026-11-17
+
+- Several columns in one step: a Filter condition on several columns (**any
+  of** or **each of** them), Sort by more columns (**+ then by**), Remove
+  duplicates by several columns, Change column on several columns at once,
+  and Add field with more fields in the same step (**+ another field**).
+  Remove columns gets **all** and **none**, Output fields **+ all the
+  others**.
+- The steps of a transformation are listed under it in the left panel: select
+  one to go to it, drag it to change the order.
+- Only the table of the last step is open; the source and the other steps fold
+  under a line with their size, and open when it is selected.
+- **+ Add a step** opens a menu of the operations, grouped, instead of a row
+  of buttons under the table.
+- Colours: each group of steps has its own, the same in the menu, the left
+  panel, the step and its table.
+
 ## [1.4.0] - 2026-11-15
 
 - Steps move up and down with the **↑** and **↓** arrows next to them.

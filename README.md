@@ -151,14 +151,39 @@ transformations that use it. It must differ from the input names and the
 other result names. A
 transformation cannot use a result that is built from its own result.
 
-Add operations one step at a time. Available operations automatically adapt to
-the current data type.
+Add operations one step at a time with **+ Add a step**: a menu of the
+operations that fit the current data, in coloured groups — **Rows**,
+**Columns and fields**, **Other data** and **One value**. Each step has the
+colour of its group.
 
 Each step provides a preview, allowing you to inspect how the data changes
-throughout the transformation.
+throughout the transformation. Only the table of the last step is open; the
+source data and the result of every other step are folded under a line with
+their size. Select the line to open or fold the table.
 
-Move a step with the **↑** and **↓** arrows next to it; the steps after it run
-again in the new order.
+The steps of a transformation are listed under it in the left panel; the
+arrow next to the transformation shows or hides them. Select a step there to
+go to it. Drag a step up or down the list to change the order, or use the
+**↑** and **↓** arrows; the steps after it run again in the new order.
+
+### Several Columns at Once
+
+A step can work on several columns together:
+
+- **Filter**: a condition can take several columns, and holds for **any of**
+  them or for **each of** them.
+- **Sort**: **+ then by** adds another column, each with its own direction.
+- **Remove duplicates**: elements are the same when all the columns picked
+  are the same.
+- **Change column**: the transformation changes each column picked, in its
+  place.
+- **Remove columns**: **all** and **none** tick or clear every column.
+- **Add field**: **+ another field** adds more fields in the same step; a
+  field sees the ones added before it.
+- **Output fields**: **+ all the others** adds every column not taken yet.
+
+Pick columns from **+ column**; **all** adds every column not picked yet, and
+**✕** on a column takes it out.
 
 ### 4. Save, Undo and Redo
 
@@ -180,9 +205,9 @@ next to the algorithm.
 
 | Operation | Description |
 |---|---|
-| Filter | Keep elements matching specified conditions |
-| Sort | Order elements by selected fields |
-| Remove duplicates | Eliminate duplicate elements |
+| Filter | Keep elements matching specified conditions, on one or several columns |
+| Sort | Order elements by one or more fields, each ascending or descending |
+| Remove duplicates | Eliminate duplicate elements, by one or more fields |
 | Reverse | Reverse the element order |
 | Merge | Combine data with another list or object using matching fields |
 | Compare | Compare elements with another list |
@@ -190,8 +215,8 @@ next to the algorithm.
 | Output fields | Give the output its fields: each output name taken from a column; a dot makes a nested field (`address.city`) |
 | Remove columns | Exclude selected fields |
 | Flatten | Expand nested structures |
-| Change column | Modify values in an existing field; with no transformation and a name in **save as**, rename it |
-| Add field | Create a new field |
+| Change column | Modify values in one or more fields; for one field with no transformation and a name in **save as**, rename it |
+| Add field | Create one or more new fields |
 | Skip / Take | Skip elements or keep the first elements |
 
 Lists can also be reduced to a single value:

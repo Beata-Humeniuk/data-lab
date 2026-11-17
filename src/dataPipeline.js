@@ -1,5 +1,5 @@
 const { parseSample } = require('./sampleFormats');
-const { runStream, runHow, same } = require('./flowRun');
+const { runStream, runHow, same, cmp } = require('./flowRun');
 const { RunError, isPlainObject, textOf, evalExpr, serialize } = require('./mappingRun');
 
 const LIST_STEPS = ['filter', 'sort', 'distinct', 'reverse', 'merge', 'compare', 'append', 'columns', 'drop', 'flatten', 'change', 'skip', 'limit'];
@@ -88,8 +88,11 @@ function refsOf(p) {
   for (const s of p.steps || []) {
     if (!s || typeof s !== 'object') continue;
     addPath(s.other);
-    if (s.from === 'input') addPath(s.path);
-    if (s.from === 'expr') for (const m of String(s.expr || '').match(NAME_IN_EXPR) || []) out.add(m);
+    for (const x of [s].concat(s.kind === 'add' && Array.isArray(s.more) ? s.more : [])) {
+      if (!x || typeof x !== 'object') continue;
+      if (x.from === 'input') addPath(x.path);
+      if (x.from === 'expr') for (const m of String(x.expr || '').match(NAME_IN_EXPR) || []) out.add(m);
+    }
   }
   return out;
 }
@@ -567,6 +570,82 @@ function merged(cur, step, root) {
   return single ? out[0] : out;
 }
 
+// Several columns in one step. A step keeps its first column in `field` too,
+// so a lab written before still reads the same.
+function fieldsOf(x) {
+  const many = Array.isArray(x.fields) ? x.fields.map((f) => String(f || '').trim()).filter(Boolean) : [];
+  if (many.length) return Array.from(new Set(many));
+  const one = String(x.field || '').trim();
+  return one ? [one] : [];
+}
+function sortKeys(step) {
+  if (Array.isArray(step.keys) && step.keys.length) return step.keys.filter((k) => k && typeof k.field === 'string' && (k.field.trim() || k.field === ''));
+  return String(step.field || '').trim() || step.field === '' ? [{ field: step.field || '', desc: !!step.desc }] : [];
+}
+function sortedBy(list, keys) {
+  const keyed = list.map((el, i) => ({ el, i, k: keys.map((k) => { const v = cell(el, String(k.field || '').trim()); return v === undefined ? null : v; }) }));
+  const missing = (v) => v === null || v === undefined;
+  keyed.sort((a, b) => {
+    for (let n = 0; n < keys.length; n++) {
+      const x = a.k[n], y = b.k[n];
+      let c;
+      if (missing(x) || missing(y)) c = missing(x) && missing(y) ? 0 : missing(x) ? -1 : 1;
+      else c = cmp(x, y);
+      if (c) return keys[n].desc ? -c : c;
+    }
+    return a.i - b.i;
+  });
+  return keyed.map((x) => x.el);
+}
+function filteredBy(list, step, root, ctx) {
+  const conds = (step.conditions || []).filter((c) => fieldsOf(c).length);
+  if (!conds.length) return list;
+  if (conds.every((c) => fieldsOf(c).length === 1)) {
+    const scope = [{ value: Object.assign({}, root, { __in: list }) }];
+    return runStream({ list: '__in', chain: [{ op: 'filter', conditions: conds.map((c) => Object.assign({}, c, { field: fieldsOf(c)[0] })), join: step.join }], end: { op: 'toList' } }, scope, ctx);
+  }
+  const box = Object.assign({}, root);
+  const scope = [{ value: box }];
+  const test = (el, c, f) => {
+    box.__one = [el];
+    return runStream({ list: '__one', chain: [{ op: 'filter', conditions: [Object.assign({}, c, { field: f })] }], end: { op: 'toList' } }, scope, ctx).length > 0;
+  };
+  return list.filter((el) => {
+    const hits = conds.map((c) => {
+      const fs = fieldsOf(c);
+      return c.match === 'all' ? fs.every((f) => test(el, c, f)) : fs.some((f) => test(el, c, f));
+    });
+    return step.join === 'or' ? hits.some(Boolean) : hits.every(Boolean);
+  });
+}
+function distinctBy(list, fields) {
+  const seen = new Set();
+  return list.filter((el) => {
+    const k = JSON.stringify(fields.map((f) => { const v = cell(el, f); return v === undefined ? null : v; }));
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+function changedAll(el, step, scope, ctx) {
+  const fs = fieldsOf(step);
+  if (!(step.how && step.how.kind) || !fs.length) return fs.length === 1 ? renamed(el, Object.assign({}, step, { field: fs[0] })) : el;
+  if (fs.length === 1) return changed(el, Object.assign({}, step, { field: fs[0] }), scope, ctx);
+  let out = el;
+  for (const f of fs) if (cell(out, f) !== undefined) out = changed(out, Object.assign({}, step, { field: f, as: '' }), scope, ctx);
+  return out;
+}
+// Add field: the step is the first field, `more` the next ones, in order;
+// a field added sees the fields added before it.
+function addItems(step) {
+  return [step].concat(Array.isArray(step.more) ? step.more : []).filter((x) => x && String(x.name || '').trim());
+}
+function addedAll(el, items, root, scope, ctx, known) {
+  let out = isPlainObject(el) ? clone(el) : { value: el };
+  for (const it of items) out = setPath(out, String(it.name).trim(), addedValue(it, isPlainObject(el) ? out : el, root, scope, ctx, known.concat(items.map((x) => String(x.name).trim()))));
+  return out;
+}
+
 function stepOn(cur, step, root, ctx) {
   const kind = kindOf(cur);
   if (stepsFor(kind).indexOf(step.kind) < 0) throw new RunError('stepNotFor', { step: step.kind, kind });
@@ -579,8 +658,8 @@ function stepOn(cur, step, root, ctx) {
       case 'columns': return (step.columns || []).some((x) => String(x.from || '').trim()) ? picked(cur, step) : cur;
       case 'drop': return dropped(cur, step);
       case 'flatten': { const r = flattened([cur], step); return r.length === 1 ? r[0] : r; }
-      case 'change': return String(step.field || '').trim() && step.how && step.how.kind ? changed(cur, step, scope, ctx) : renamed(cur, step);
-      case 'add': return String(step.name || '').trim() ? setPath(clone(cur), step.name.trim(), addedValue(step, cur, root, scope, ctx, columnsOf([cur]))) : cur;
+      case 'change': return changedAll(cur, step, scope, ctx);
+      case 'add': { const items = addItems(step); return items.length ? addedAll(cur, items, root, scope, ctx, columnsOf([cur])) : cur; }
       case 'take': { if (!String(step.field || '').trim()) return cur; const v = cell(cur, step.field); return v === undefined ? null : v; }
       case 'asList': return [cur];
     }
@@ -589,13 +668,14 @@ function stepOn(cur, step, root, ctx) {
     return step.how && step.how.kind ? changed(cur, Object.assign({}, step, { field: '' }), scope, ctx) : cur;
   }
   switch (step.kind) {
-    case 'filter': {
-      const conds = (step.conditions || []).filter((c) => String(c.field || '').trim());
-      if (!conds.length) return list;
-      return stream({ op: 'filter', conditions: conds, join: step.join });
+    case 'filter': return filteredBy(list, step, root, ctx);
+    case 'sort': {
+      const keys = sortKeys(step);
+      if (!keys.length) return list;
+      if (keys.length === 1) return stream({ op: keys[0].desc ? 'sortDesc' : 'sort', arg: keys[0].field || '' });
+      return sortedBy(list, keys);
     }
-    case 'sort': return String(step.field || '').trim() || step.field === '' ? stream({ op: step.desc ? 'sortDesc' : 'sort', arg: step.field || '' }) : list;
-    case 'distinct': return stream({ op: 'distinct', arg: step.field || '' });
+    case 'distinct': { const fs = fieldsOf(step); return fs.length > 1 ? distinctBy(list, fs) : stream({ op: 'distinct', arg: fs[0] || '' }); }
     case 'reverse': return list.slice().reverse();
     case 'skip': return stream({ op: 'skip', arg: String(step.n || '0') });
     case 'limit': return stream({ op: 'limit', arg: String(step.n || '0') });
@@ -610,13 +690,14 @@ function stepOn(cur, step, root, ctx) {
       return list.concat(asList(valueAt(root, step.other)).map(clone));
     }
     case 'columns': return (step.columns || []).some((x) => String(x.from || '').trim()) ? list.map((el) => picked(el, step)) : list;
-    case 'change': return String(step.field || '').trim() && step.how && step.how.kind ? list.map((el) => changed(el, step, scope, ctx)) : list.map((el) => renamed(el, step));
+    case 'change': return list.map((el) => changedAll(el, step, scope, ctx));
     case 'drop': return list.map((el) => dropped(el, step));
     case 'flatten': return flattened(list, step);
     case 'add': {
-      if (!String(step.name || '').trim()) return list;
+      const items = addItems(step);
+      if (!items.length) return list;
       const known = columnsOf(list);
-      return list.map((el) => setPath(isPlainObject(el) ? clone(el) : { value: el }, step.name.trim(), addedValue(step, el, root, scope, ctx, known)));
+      return list.map((el) => addedAll(el, items, root, scope, ctx, known));
     }
     case 'first': return stream(null, { op: 'first' });
     case 'last': return stream(null, { op: 'last' });

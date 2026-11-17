@@ -23,8 +23,14 @@ function valueText(c, which) {
   const v = c[which];
   return code(v === undefined ? '' : v);
 }
+function fieldsOf(x) {
+  const many = Array.isArray(x.fields) ? x.fields.map((f) => String(f || '').trim()).filter(Boolean) : [];
+  if (many.length) return many;
+  return String(x.field || '').trim() ? [String(x.field).trim()] : [];
+}
 function conditionText(c) {
-  const f = code(c.field);
+  const fs = fieldsOf(c);
+  const f = fs.length > 1 ? (c.match === 'all' ? 'each of ' : 'any of ') + list(fs) : code(fs[0] || c.field);
   const op = c.op || 'eq';
   if (OPS[op]) return f + ' ' + OPS[op] + ' ' + valueText(c, 'value');
   switch (op) {
@@ -53,26 +59,35 @@ function howText(how, catalog) {
     return label + (params.length ? ' (' + params.join(', ') + ')' : '');
   }).join(' → ');
 }
-function addedText(s, catalog) {
+function addedOne(s, catalog) {
   const name = code(s.name);
   switch (s.from) {
-    case 'column': return 'Add field ' + name + ' = ' + code(s.column);
-    case 'input': return 'Add field ' + name + ' = ' + code(s.path);
-    case 'calc': return 'Add field ' + name + ' = ' + code(s.column || 'element') + (s.how && s.how.kind ? ' → ' + howText(s.how, catalog) : '');
-    case 'parts': return 'Add field ' + name + ' = ' + (s.parts || []).map((p) => (p.kind === 'field' ? code(p.value) : '"' + String(p.value || '') + '"')).join(' + ');
-    case 'expr': return 'Add field ' + name + ' = ' + code(s.expr);
+    case 'column': return name + ' = ' + code(s.column);
+    case 'input': return name + ' = ' + code(s.path);
+    case 'calc': return name + ' = ' + code(s.column || 'element') + (s.how && s.how.kind ? ' → ' + howText(s.how, catalog) : '');
+    case 'parts': return name + ' = ' + (s.parts || []).map((p) => (p.kind === 'field' ? code(p.value) : '"' + String(p.value || '') + '"')).join(' + ');
+    case 'expr': return name + ' = ' + code(s.expr);
   }
-  return 'Add field ' + name + ' = "' + String(s.value === undefined ? '' : s.value) + '"';
+  return name + ' = "' + String(s.value === undefined ? '' : s.value) + '"';
+}
+function addedText(s, catalog) {
+  const items = [s].concat(Array.isArray(s.more) ? s.more : []).filter((x) => x && String(x.name || '').trim());
+  if (items.length <= 1) return 'Add field ' + addedOne(s, catalog);
+  return 'Add fields ' + items.map((x) => addedOne(x, catalog)).join('; ');
+}
+function sortText(s) {
+  const keys = Array.isArray(s.keys) && s.keys.length ? s.keys : [{ field: s.field, desc: s.desc }];
+  return 'Sort by ' + keys.map((k) => (k.field ? code(k.field) : 'the whole element') + (k.desc ? ', descending' : ', ascending')).join('; then by ');
 }
 
 function stepText(s, catalog) {
   switch (s.kind) {
     case 'filter': {
-      const conds = (s.conditions || []).filter((c) => String(c.field || '').trim());
+      const conds = (s.conditions || []).filter((c) => fieldsOf(c).length);
       return conds.length ? 'Keep the elements where ' + conds.map(conditionText).join(s.join === 'or' ? ' or ' : ' and ') : 'Filter (no condition)';
     }
-    case 'sort': return 'Sort by ' + (s.field ? code(s.field) : 'the whole element') + (s.desc ? ', descending' : ', ascending');
-    case 'distinct': return 'Remove duplicates' + (s.field ? ' by ' + code(s.field) : '');
+    case 'sort': return sortText(s);
+    case 'distinct': { const fs = fieldsOf(s); return 'Remove duplicates' + (fs.length ? ' by ' + list(fs) : ''); }
     case 'reverse': return 'Reverse the order';
     case 'skip': return 'Skip the first ' + String(s.n || '0');
     case 'limit': return 'Take the first ' + String(s.n || '0');
@@ -97,9 +112,13 @@ function stepText(s, catalog) {
     case 'drop': return 'Remove the fields ' + list((s.fields || []).filter(Boolean));
     case 'flatten': return (s.field ? 'Flatten ' + code(s.field) : 'Flatten all nested objects') +
       (s.names === 'own' ? ', fields under their own names' : ', field names prefixed with the parent') + (s.keepEmpty === false ? ', elements without items left out' : '');
-    case 'change': if (!(s.how && s.how.kind) && String(s.as || '').trim()) return 'Rename ' + code(s.field) + ' to ' + code(s.as);
+    case 'change': {
+      const fs = fieldsOf(s);
+      if (fs.length > 1) return 'Change ' + list(fs) + ': ' + (s.how && s.how.kind ? howText(s.how, catalog) : 'no change');
+      if (!(s.how && s.how.kind) && String(s.as || '').trim()) return 'Rename ' + code(s.field) + ' to ' + code(s.as);
       return 'Change ' + (s.field ? code(s.field) : 'the value') + ': ' + (s.how && s.how.kind ? howText(s.how, catalog) : 'no change') +
       (String(s.as || '').trim() ? ', saved as ' + code(s.as) : '');
+    }
     case 'add': return addedText(s, catalog);
     case 'take': return 'Take the field ' + code(s.field);
     case 'asList': return 'Wrap in a list';
@@ -121,7 +140,7 @@ function readsOf(pipeline) {
   const add = (p) => { const t = String(p || '').trim(); if (t && out.indexOf(t) < 0) out.push(t); };
   for (const s of pipeline.steps || []) {
     if (s.kind === 'merge' || s.kind === 'compare' || s.kind === 'append') add(s.other);
-    if (s.kind === 'add' && s.from === 'input') add(s.path);
+    if (s.kind === 'add') [s].concat(Array.isArray(s.more) ? s.more : []).forEach((x) => { if (x && x.from === 'input') add(x.path); });
   }
   return out;
 }

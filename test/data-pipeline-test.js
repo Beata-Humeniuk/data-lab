@@ -272,3 +272,32 @@ runChecks([
     [outputText(v, 'xml', 'result', { commentField: 'Name' }).indexOf('<!--') > 0 && !outputText([{ Name: 'a--b' }], 'xml', 'r', { commentField: 'Name' }).includes('a--b -->'), 'no -- inside an XML comment']
   ]);
 }
+
+{
+  const rows = '[{"a":" x ","b":"y","c":"1","g":"B","n":"2"},{"a":"p","b":" q","c":"","g":"A","n":"10"},{"a":"z","b":"y","c":"3","g":"B","n":"1"},{"a":" x ","b":"y","c":"9","g":"A","n":"10"}]';
+  const d = { inputs: [{ name: 'l', text: rows }, { name: 'o', text: '{"a":" s ","b":" t "}' }], pipelines: [
+    { name: 'any', source: 'l', steps: [{ kind: 'filter', conditions: [{ field: 'a', fields: ['a', 'b'], match: 'any', op: 'eq', value: 'y', valueKind: 'const' }] }] },
+    { name: 'all', source: 'l', steps: [{ kind: 'filter', conditions: [{ field: 'a', fields: ['b', 'c'], match: 'all', op: 'isSet' }] }] },
+    { name: 'mix', source: 'l', steps: [{ kind: 'filter', join: 'and', conditions: [{ fields: ['a', 'b'], match: 'any', op: 'eq', value: 'y', valueKind: 'const' }, { field: 'g', op: 'eq', value: 'A', valueKind: 'const' }] }] },
+    { name: 'sort2', source: 'l', steps: [{ kind: 'sort', field: 'g', keys: [{ field: 'g' }, { field: 'n', desc: true }] }] },
+    { name: 'dist2', source: 'l', steps: [{ kind: 'distinct', field: 'a', fields: ['a', 'b'] }] },
+    { name: 'chg2', source: 'l', steps: [{ kind: 'change', field: 'a', fields: ['a', 'b'], how: { kind: 'trim' } }] },
+    { name: 'chgO', source: 'o', steps: [{ kind: 'change', field: 'a', fields: ['a', 'b'], how: { kind: 'upper' } }] },
+    { name: 'add2', source: 'l', steps: [{ kind: 'add', name: 'k', from: 'const', value: 'K', more: [{ name: 'ab', from: 'parts', parts: [{ kind: 'field', value: 'g' }, { kind: 'field', value: 'k' }] }, { name: 'x2', from: 'expr', expr: 'n * 2' }] }] },
+    { name: 'addO', source: 'o', steps: [{ kind: 'add', name: 'k', from: 'const', value: '1', more: [{ name: 'm', from: 'column', column: 'k' }] }] }
+  ] };
+  const r10 = runDocument(d, {});
+  const q = (n) => r10.pipelines.find((x) => x.name === n);
+  const col = (n, f) => q(n).result.map((x) => x[f]).join(',');
+  runChecks([
+    [q('any').result.length === 3 && col('any', 'n') === '2,1,10', 'a condition on several columns: any of them'],
+    [q('all').result.length === 3 && col('all', 'c') === '1,3,9', 'a condition on several columns: all of them'],
+    [q('mix').result.length === 1 && q('mix').result[0].c === '9', 'a several-column condition with another one'],
+    [col('sort2', 'g') === 'A,A,B,B' && col('sort2', 'n') === '10,10,2,1' && col('sort2', 'c') === ',9,1,3', 'sorted by several columns, each its own direction'],
+    [q('dist2').result.length === 3, 'duplicates by several columns'],
+    [col('chg2', 'a') === 'x,p,z,x' && col('chg2', 'b') === 'y,q,y,y', 'one transformation on several columns'],
+    [JSON.stringify(q('chgO').result) === '{"a":" S ","b":" T "}', 'several fields of an object changed'],
+    [col('add2', 'k') === 'K,K,K,K' && col('add2', 'ab') === 'BK,AK,BK,AK' && col('add2', 'x2') === '4,20,2,20', 'several fields added in one step, each seeing the ones before'],
+    [JSON.stringify(q('addO').result) === '{"a":" s ","b":" t ","k":"1","m":"1"}', 'several fields added to an object']
+  ]);
+}

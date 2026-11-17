@@ -115,10 +115,61 @@ function columnPick(key, value, columns, onChange, emptyLabel) {
   const opts = [['', emptyLabel || M('dv.pickColumn')]].concat((columns || []).map((c) => [c, c === '' ? M('dv.wholeValue') : c]));
   return pick(key, value, opts, onChange);
 }
+// Several columns at once: the ones picked as chips, and a list to add one more.
+function columnsPick(key, values, columns, onChange, emptyLabel) {
+  values = (values || []).filter((v) => v !== undefined && v !== null && String(v).trim());
+  const box = el('span', { class: 'multi' });
+  values.forEach((v, vi) => box.appendChild(el('span', { class: 'chip' }, [
+    el('span', { text: v }),
+    el('button', { type: 'button', class: 'chip-x', text: '✕', title: M('dv.multi.remove'), 'aria-label': M('dv.multi.remove') + ': ' + v,
+      onclick: () => { const next = values.slice(); next.splice(vi, 1); onChange(next); } })
+  ])));
+  const rest = (columns || []).filter((c) => c !== '' && values.indexOf(c) < 0);
+  if (rest.length) {
+    const add = pick(key, '', [['', values.length ? M('dv.multi.add') : (emptyLabel || M('dv.pickColumn'))]].concat(rest.map((c) => [c, c])), (v) => { if (v) onChange(values.concat([v])); });
+    add.classList.add('multi-add');
+    box.appendChild(add);
+  }
+  if (rest.length > 1) box.appendChild(el('button', { type: 'button', class: 'link small', text: M('dv.multi.all'), title: M('dv.multi.allTitle'), onclick: () => onChange(values.concat(rest)) }));
+  return box;
+}
+function fieldsIn(x) {
+  if (Array.isArray(x.fields) && x.fields.length) return x.fields.slice();
+  return x.field !== undefined && x.field !== null && String(x.field).trim() ? [x.field] : [];
+}
+function setFields(x, list) {
+  x.fields = list.slice();
+  x.field = list[0] || '';
+  if (list.length <= 1) delete x.fields;
+}
 
 const FORMATS = [['auto', M('run.formatAuto')], ['json', 'JSON'], ['xml', 'XML'], ['yaml', 'YAML'], ['csv', 'CSV'], ['kv', 'key=value']];
 let openInput = null;
 let drill = null;
+const stepsOpen = {};
+const tableOpen = {};
+let addMenu = false;
+let dragFrom = null;
+let flashStep = null;
+let flashTimer = null;
+function flash(si) {
+  flashStep = { si, until: Date.now() + 1200 };
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { flashStep = null; document.querySelectorAll('.step.flash').forEach((x) => x.classList.remove('flash')); }, 1250);
+}
+const CATS = {
+  rows: ['filter', 'sort', 'distinct', 'reverse', 'skip', 'limit'],
+  fields: ['columns', 'drop', 'flatten', 'change', 'add', 'take', 'asList'],
+  combine: ['merge', 'compare', 'append'],
+  value: ['first', 'last', 'nth', 'count', 'sum', 'min', 'max', 'avg', 'join']
+};
+function catOf(kind) {
+  for (const c in CATS) if (CATS[c].indexOf(kind) >= 0) return c;
+  return 'fields';
+}
+function resetFolds(pi) {
+  for (const k of Object.keys(tableOpen)) if (k.indexOf('p' + pi + '.') === 0) delete tableOpen[k];
+}
 function sizeText(v) {
   if (!v) return '';
   if (v.kind === 'list') return M('dv.size.list', { count: v.count });
@@ -128,7 +179,7 @@ function sizeText(v) {
 function renderInputs() {
   const box = $('inputs');
   box.textContent = '';
-  box.appendChild(el('div', { class: 'cap', text: M('dv.inputs') }));
+  box.appendChild(el('div', { class: 'cap cap-in', text: M('dv.inputs') }));
   doc.inputs.forEach((inp, i) => {
     const st = res && res.inputs ? res.inputs[inp.name] : null;
     const data = res && res.inputData ? res.inputData[inp.name] : null;
@@ -164,20 +215,94 @@ function addTransform(p) {
   structural();
 }
 function renderTransformList(box) {
-  box.appendChild(el('div', { class: 'cap section-cap', text: M('dv.transforms') }));
+  box.appendChild(el('div', { class: 'cap section-cap cap-tr', text: M('dv.transforms') }));
   doc.pipelines.forEach((p, pi) => {
     const r = res && res.pipelines ? res.pipelines[pi] : null;
     const a = p.algorithm ? algorithms.find((x) => x.id === p.algorithm) : null;
     const meta = resultMeta(r);
-    box.appendChild(el('button', { type: 'button', class: 'inrow' + (pi === selected ? ' on' : ''), title: M('dv.openTransform'), 'aria-current': pi === selected ? 'true' : null,
-      onclick: () => { selected = pi; render(); $('work').scrollTop = 0; } }, [
-      el('span', { class: 'nm', text: transformTitle(p, pi) }),
-      a ? el('span', { class: 'algo small-algo', text: a.name }) : null,
-      el('span', { class: 'meta' + (meta === M('dv.hasError') ? ' bad' : ''), text: meta })
+    const open = stepsOpen[pi] !== undefined ? stepsOpen[pi] : pi === selected;
+    box.appendChild(el('div', { class: 'trow' + (pi === selected ? ' on' : '') }, [
+      el('button', { type: 'button', class: 'chev' + (open ? ' open' : ''), title: M('dv.stepsToggle'), 'aria-label': M('dv.stepsToggle'), 'aria-expanded': open ? 'true' : 'false',
+        onclick: () => { stepsOpen[pi] = !open; render(); } }, ['▸']),
+      el('button', { type: 'button', class: 'inrow tr' + (pi === selected ? ' on' : ''), title: M('dv.openTransform'), 'aria-current': pi === selected ? 'true' : null,
+        onclick: () => { selected = pi; stepsOpen[pi] = true; addMenu = false; render(); $('work').scrollTop = 0; } }, [
+        el('span', { class: 'nm', text: transformTitle(p, pi) }),
+        a ? el('span', { class: 'algo small-algo', text: a.name }) : null,
+        el('span', { class: 'meta' + (meta === M('dv.hasError') ? ' bad' : ''), text: meta })
+      ])
     ]));
+    if (open) box.appendChild(stepList(p, pi, r));
   });
   box.appendChild(el('button', { class: 'secondary', text: M('dv.addTransform'), onclick: () => addTransform({ name: '', source: '', steps: [] }) }));
   if (algorithms.length) box.appendChild(el('div', { class: 'row' }, [fromAlgorithm()]));
+}
+function stepList(p, pi, r) {
+  const steps = p.steps || [];
+  const list = el('ol', { class: 'steplist', 'aria-label': M('dv.steps') });
+  if (!steps.length) list.appendChild(el('li', { class: 'nostep', text: M('dv.noSteps') }));
+  let kindNow = r && r.sourceKind ? r.sourceKind : 'list';
+  const clearMarks = () => list.querySelectorAll('.drop-before,.drop-after').forEach((x) => x.classList.remove('drop-before', 'drop-after'));
+  steps.forEach((s, si) => {
+    const sr = r && r.steps ? r.steps[si] : null;
+    if (sr && sr.kindBefore) kindNow = sr.kindBefore;
+    const bad = sr && sr.error && sr.error.code !== 'afterError';
+    const li = el('li', { class: 'sitem cat-' + catOf(s.kind) + (bad ? ' bad' : ''), draggable: 'true', title: M('dv.dragStep') }, [
+      el('span', { class: 'grip', 'aria-hidden': 'true', text: '⋮⋮' }),
+      el('button', { type: 'button', class: 'sgo', title: M('dv.goToStep'),
+        onclick: () => { selected = pi; tableOpen['p' + pi + '.s' + si] = true; flash(si); addMenu = false; render(); goToStep(si); } }, [
+        el('span', { class: 'sno', text: String(si + 1) }),
+        el('span', { class: 'snm', text: stepLabel(s.kind, kindNow) }),
+        el('span', { class: 'sdet', text: stepDetail(s) })
+      ]),
+      el('button', { type: 'button', class: 'mv', text: '↑', title: M('dv.stepUp'), 'aria-label': M('dv.stepUp'), disabled: si === 0, onclick: () => moveStep(p, si, -1, pi) }),
+      el('button', { type: 'button', class: 'mv', text: '↓', title: M('dv.stepDown'), 'aria-label': M('dv.stepDown'), disabled: si === steps.length - 1, onclick: () => moveStep(p, si, 1, pi) })
+    ]);
+    li.addEventListener('dragstart', (e) => { dragFrom = { pi, si }; li.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(si)); } catch (x) { /* no data */ } });
+    li.addEventListener('dragend', () => { dragFrom = null; li.classList.remove('dragging'); clearMarks(); });
+    li.addEventListener('dragover', (e) => {
+      if (!dragFrom || dragFrom.pi !== pi) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const box = li.getBoundingClientRect();
+      const after = e.clientY > box.top + box.height / 2;
+      clearMarks();
+      li.classList.add(after ? 'drop-after' : 'drop-before');
+    });
+    li.addEventListener('drop', (e) => {
+      if (!dragFrom || dragFrom.pi !== pi) return;
+      e.preventDefault();
+      const box = li.getBoundingClientRect();
+      const after = e.clientY > box.top + box.height / 2;
+      const from = dragFrom.si;
+      let to = si + (after ? 1 : 0);
+      if (from < to) to--;
+      dragFrom = null;
+      clearMarks();
+      moveStepTo(p, from, to, pi);
+    });
+    list.appendChild(li);
+  });
+  return list;
+}
+function stepDetail(s) {
+  const cols = (xs) => xs.filter(Boolean).join(', ');
+  const fieldsOf = (x) => (Array.isArray(x.fields) && x.fields.length ? x.fields : [x.field]).filter((f) => f !== undefined && f !== null && String(f).trim());
+  switch (s.kind) {
+    case 'filter': return cols([].concat(...(s.conditions || []).map(fieldsOf)));
+    case 'sort': return cols((Array.isArray(s.keys) && s.keys.length ? s.keys : [{ field: s.field }]).map((k) => k.field));
+    case 'distinct': case 'change': return cols(fieldsOf(s));
+    case 'drop': return cols(s.fields || []);
+    case 'add': return cols([s].concat(s.more || []).map((x) => x.name));
+    case 'merge': case 'compare': case 'append': return s.other || '';
+    case 'columns': return cols((s.columns || []).map((c) => c.as || c.from));
+    case 'flatten': case 'take': case 'sum': case 'min': case 'max': case 'avg': return s.field || '';
+    case 'skip': case 'limit': return String(s.n || '');
+  }
+  return '';
+}
+function goToStep(si) {
+  const t = document.getElementById('step-' + si);
+  if (t && t.scrollIntoView) t.scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
 function overlay(head, body) {
   return el('div', { id: 'ov', onclick: (e) => { if (e.target.id === 'ov') closeOverlay(); } }, [
@@ -330,9 +455,11 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
       s.conditions = s.conditions || [];
       if (!s.conditions.length) s.conditions.push({ field: '', op: 'eq', value: '', valueKind: 'const' });
       s.conditions.forEach((c, ci) => {
+        const fs = fieldsIn(c);
         const kids = [
           ci === 0 ? lbl(M('dv.where')) : lbl(s.join === 'or' ? M('dv.or') : M('dv.and')),
-          columnPick(k + '.c' + ci + '.f', c.field, cols, (v) => { c.field = v; structural(); }),
+          fs.length > 1 ? pick(k + '.c' + ci + '.m', c.match === 'all' ? 'all' : 'any', [['any', M('dv.match.any')], ['all', M('dv.match.all')]], (v) => { c.match = v; structural(); }, M('dv.match.title')) : null,
+          columnsPick(k + '.c' + ci + '.f', fs, cols, (v) => { setFields(c, v); structural(); }),
           pick(k + '.c' + ci + '.op', c.op || 'eq', OPS.map((o) => [o, M('cond.op.' + o)]), (v) => { c.op = v; structural(); })
         ];
         if (NO_VALUE.indexOf(c.op) < 0) kids.push(text(k + '.c' + ci + '.v', c.value, (v) => { c.value = v; c.valueKind = 'const'; }, '', 14));
@@ -346,12 +473,29 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
       ]));
       break;
     }
-    case 'sort':
-      box.appendChild(row([lbl(M('dv.by')), columnPick(k + '.f', s.field, cols, (v) => { s.field = v; structural(); }),
-        pick(k + '.o', s.desc ? 'desc' : 'asc', [['asc', M('how.o.asc')], ['desc', M('how.o.desc')]], (v) => { s.desc = v === 'desc'; structural(); })]));
+    case 'sort': {
+      const keys = Array.isArray(s.keys) && s.keys.length ? s.keys : [{ field: s.field === undefined ? null : s.field, desc: !!s.desc }];
+      const sync = () => {
+        s.keys = keys;
+        s.field = keys[0].field === null ? undefined : keys[0].field;
+        s.desc = !!keys[0].desc;
+        if (keys.length === 1) delete s.keys;
+        structural();
+      };
+      keys.forEach((key, ki) => {
+        const opts = ki ? cols.filter((c) => c !== '') : cols;
+        box.appendChild(row([
+          lbl(ki ? M('dv.sort.then') : M('dv.by')),
+          columnPick(k + '.k' + ki + '.f', key.field === null ? '' : key.field, opts, (v) => { key.field = v === '' && ki ? null : v; sync(); }),
+          pick(k + '.k' + ki + '.o', key.desc ? 'desc' : 'asc', [['asc', M('how.o.asc')], ['desc', M('how.o.desc')]], (v) => { key.desc = v === 'desc'; sync(); }),
+          keys.length > 1 ? el('button', { class: 'x', text: '✕', onclick: () => { keys.splice(ki, 1); sync(); } }) : null
+        ]));
+      });
+      box.appendChild(row([el('button', { class: 'link', text: M('dv.sort.addKey'), onclick: () => { keys.push({ field: null, desc: false }); sync(); } })]));
       break;
+    }
     case 'distinct':
-      box.appendChild(row([lbl(M('dv.by')), columnPick(k + '.f', s.field, cols, (v) => { s.field = v; structural(); }, M('dv.wholeElement'))]));
+      box.appendChild(row([lbl(M('dv.by')), columnsPick(k + '.f', fieldsIn(s), cols, (v) => { setFields(s, v); structural(); }, M('dv.wholeElement'))]));
       break;
     case 'nth':
       if (s.index === undefined) s.index = String(Math.max(0, (parseInt(s.n, 10) || 1) - 1));
@@ -445,7 +589,8 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
       const missing = cols.filter((c) => c !== '' && !s.columns.some((x) => x.from === c));
       box.appendChild(row([
         el('button', { class: 'link', text: M('dv.addColumn'), onclick: () => { s.columns.push({ from: '', as: '' }); structural(); } }),
-        missing.length ? columnPick(k + '.more', '', missing, (v) => { if (v) s.columns.push({ from: v, as: '' }); structural(); }, M('dv.out.addFrom')) : null
+        missing.length ? columnPick(k + '.more', '', missing, (v) => { if (v) s.columns.push({ from: v, as: '' }); structural(); }, M('dv.out.addFrom')) : null,
+        missing.length > 1 ? el('button', { class: 'link', text: M('dv.out.addAll'), onclick: () => { missing.forEach((c) => s.columns.push({ from: c, as: '' })); structural(); } }) : null
       ]));
       box.appendChild(el('div', { class: 'dim small', text: M('dv.out.hint') }));
       break;
@@ -466,6 +611,10 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
         return el('label', {}, [cb, c]);
       }));
       box.appendChild(row([lbl(M('dv.drop.which')), checks]));
+      box.appendChild(row([
+        el('button', { class: 'link small', text: M('dv.drop.all'), onclick: () => { top.forEach((c) => { if (s.fields.indexOf(c) < 0) s.fields.push(c); }); structural(); } }),
+        s.fields.length ? el('button', { class: 'link small', text: M('dv.drop.none'), onclick: () => { s.fields = []; structural(); } }) : null
+      ]));
       const deep = fields.filter((f) => f.path.indexOf('.') > 0 && s.fields.indexOf(f.path) < 0).map((f) => f.path);
       if (deep.length) box.appendChild(row([lbl(M('dv.drop.nested')), columnPick(k + '.deep', '', deep, (v) => { if (v) s.fields.push(v); structural(); }, M('dv.drop.pickNested'))]));
       break;
@@ -486,48 +635,37 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
     }
     case 'change': {
       s.how = s.how || { kind: '' };
-      const lead = kindBefore === 'value' ? [lbl(M('dv.value')), lbl('→')] : [lbl(M(kindBefore === 'object' ? 'dv.field' : 'dv.column')), columnPick(k + '.f', s.field, cols, (v) => { s.field = v; structural(); }), lbl('→')];
-      howChain(box, k, s, cols, lead);
-      if (kindBefore !== 'value') {
+      const fs = fieldsIn(s);
+      if (kindBefore !== 'value') box.appendChild(row([lbl(M(kindBefore === 'object' ? 'dv.fields' : 'dv.columns')), columnsPick(k + '.f', fs, cols, (v) => { setFields(s, v); if (v.length > 1) delete s.as; structural(); })]));
+      howChain(box, k, s, cols, kindBefore === 'value' ? [lbl(M('dv.value')), lbl('→')] : [lbl('→')]);
+      if (kindBefore !== 'value' && fs.length > 1) box.appendChild(el('div', { class: 'dim small', text: M('dv.change.manyHint') }));
+      else if (kindBefore !== 'value') {
         box.appendChild(row([lbl(M('dv.saveAs')), text(k + '.as', s.as, (v) => { s.as = v; }, s.field || M('dv.sameColumn'), 14)]));
         box.appendChild(el('div', { class: 'dim small', text: M(s.how && s.how.kind ? 'dv.saveAsHint' : 'dv.renameHint') }));
       }
       break;
     }
     case 'add': {
-      const from = s.from || 'const';
-      box.appendChild(row([lbl(M('dv.fieldName')), text(k + '.name', s.name, (v) => { s.name = v; }, '', 12), lbl('='),
-        pick(k + '.from', from, [['const', M('dv.add.const')], ['column', M('dv.add.column')], ['calc', M('dv.add.calc')], ['parts', M('dv.add.parts')], ['input', M('dv.add.input')], ['expr', M('dv.add.expr')]], (v) => {
-          s.from = v;
-          if (v === 'parts' && !(s.parts && s.parts.length)) s.parts = [{ kind: 'field', value: '' }, { kind: 'text', value: ' ' }, { kind: 'field', value: '' }];
-          if (v === 'calc') s.how = s.how || { kind: '' };
-          structural();
-        })]));
-      if (from === 'const') box.appendChild(row([lbl(M('dv.valuePh')), text(k + '.v', s.value, (v) => { s.value = v; }, '', 18)]));
-      else if (from === 'column') box.appendChild(row([lbl(M(kindBefore === 'list' ? 'dv.column' : 'dv.field')), columnPick(k + '.c', s.column, cols, (v) => { s.column = v; structural(); })]));
-      else if (from === 'input') box.appendChild(row([lbl(M('dv.add.from')), sourcePick(k + '.path', s.path, sources, (v) => { s.path = v; structural(); })]));
-      else if (from === 'calc') {
-        s.how = s.how || { kind: '' };
-        howChain(box, k, s, cols, [lbl(M(kindBefore === 'list' ? 'dv.column' : 'dv.field')), columnPick(k + '.c', s.column, cols, (v) => { s.column = v; structural(); }), lbl('→')]);
-      } else if (from === 'parts') {
-        s.parts = s.parts || [];
-        const line = el('div', { class: 'row' });
-        s.parts.forEach((part, pi2) => {
-          const pk = k + '.part' + pi2;
-          line.appendChild(pick(pk + '.k', part.kind === 'field' ? 'field' : 'text', [['field', M('dv.part.field')], ['text', M('dv.part.text')]], (v) => { part.kind = v; part.value = ''; structural(); }));
-          line.appendChild(part.kind === 'field' ? columnPick(pk + '.v', part.value, cols, (v) => { part.value = v; structural(); })
-            : text(pk + '.v', part.value, (v) => { part.value = v; }, '', 6));
-          line.appendChild(el('button', { class: 'x', text: '✕', onclick: () => { s.parts.splice(pi2, 1); structural(); } }));
-          if (pi2 < s.parts.length - 1) line.appendChild(lbl('+'));
-        });
-        box.appendChild(line);
-        box.appendChild(row([el('button', { class: 'link', text: M('dv.part.addField'), onclick: () => { s.parts.push({ kind: 'field', value: '' }); structural(); } }),
-          el('button', { class: 'link', text: M('dv.part.addText'), onclick: () => { s.parts.push({ kind: 'text', value: '' }); structural(); } })]));
-      } else {
-        const t = text(k + '.expr', s.expr, (v) => { s.expr = v; }, '', 40);
-        t.classList.add('mono');
-        box.appendChild(row([lbl(M('dv.add.expr')), t]));
-      }
+      const items = [s].concat(Array.isArray(s.more) ? s.more : []);
+      const ITEM_KEYS = ['name', 'from', 'value', 'column', 'path', 'how', 'parts', 'expr'];
+      const removeItem = (ii) => {
+        if (ii > 0) s.more.splice(ii - 1, 1);
+        else {
+          const next = s.more.shift();
+          ITEM_KEYS.forEach((x) => { delete s[x]; });
+          ITEM_KEYS.forEach((x) => { if (next[x] !== undefined) s[x] = next[x]; });
+        }
+        if (!s.more.length) delete s.more;
+        structural();
+      };
+      items.forEach((it, ii) => {
+        const part = el('div', { class: items.length > 1 ? 'additem' : '' });
+        const seen = cols.concat(items.slice(0, ii).map((x) => String(x.name || '').trim()).filter((x) => x && cols.indexOf(x) < 0));
+        addItemForm(part, ii ? k + '.m' + ii : k, it, seen, sources, kindBefore,
+          items.length > 1 ? [el('button', { class: 'x', text: '✕', title: M('dv.add.removeField'), onclick: () => removeItem(ii) })] : []);
+        box.appendChild(part);
+      });
+      box.appendChild(row([el('button', { class: 'link', text: M('dv.add.more'), onclick: () => { (s.more = s.more || []).push({ name: '', from: 'const', value: '' }); structural(); } })]));
       break;
     }
     case 'take':
@@ -535,6 +673,44 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
       break;
   }
   return box;
+}
+
+function addItemForm(box, k, s, cols, sources, kindBefore, tail) {
+  const row = (kids) => el('div', { class: 'row' }, kids);
+  const lbl = (t) => el('span', { class: 'lbl', text: t });
+  const from = s.from || 'const';
+  box.appendChild(row([lbl(M('dv.fieldName')), text(k + '.name', s.name, (v) => { s.name = v; }, '', 12), lbl('='),
+    pick(k + '.from', from, [['const', M('dv.add.const')], ['column', M('dv.add.column')], ['calc', M('dv.add.calc')], ['parts', M('dv.add.parts')], ['input', M('dv.add.input')], ['expr', M('dv.add.expr')]], (v) => {
+      s.from = v;
+      if (v === 'parts' && !(s.parts && s.parts.length)) s.parts = [{ kind: 'field', value: '' }, { kind: 'text', value: ' ' }, { kind: 'field', value: '' }];
+      if (v === 'calc') s.how = s.how || { kind: '' };
+      structural();
+    })].concat(tail || [])));
+  if (from === 'const') box.appendChild(row([lbl(M('dv.valuePh')), text(k + '.v', s.value, (v) => { s.value = v; }, '', 18)]));
+  else if (from === 'column') box.appendChild(row([lbl(M(kindBefore === 'list' ? 'dv.column' : 'dv.field')), columnPick(k + '.c', s.column, cols, (v) => { s.column = v; structural(); })]));
+  else if (from === 'input') box.appendChild(row([lbl(M('dv.add.from')), sourcePick(k + '.path', s.path, sources, (v) => { s.path = v; structural(); })]));
+  else if (from === 'calc') {
+    s.how = s.how || { kind: '' };
+    howChain(box, k, s, cols, [lbl(M(kindBefore === 'list' ? 'dv.column' : 'dv.field')), columnPick(k + '.c', s.column, cols, (v) => { s.column = v; structural(); }), lbl('→')]);
+  } else if (from === 'parts') {
+    s.parts = s.parts || [];
+    const line = el('div', { class: 'row' });
+    s.parts.forEach((part, pi2) => {
+      const pk = k + '.part' + pi2;
+      line.appendChild(pick(pk + '.k', part.kind === 'field' ? 'field' : 'text', [['field', M('dv.part.field')], ['text', M('dv.part.text')]], (v) => { part.kind = v; part.value = ''; structural(); }));
+      line.appendChild(part.kind === 'field' ? columnPick(pk + '.v', part.value, cols, (v) => { part.value = v; structural(); })
+        : text(pk + '.v', part.value, (v) => { part.value = v; }, '', 6));
+      line.appendChild(el('button', { class: 'x', text: '✕', onclick: () => { s.parts.splice(pi2, 1); structural(); } }));
+      if (pi2 < s.parts.length - 1) line.appendChild(lbl('+'));
+    });
+    box.appendChild(line);
+    box.appendChild(row([el('button', { class: 'link', text: M('dv.part.addField'), onclick: () => { s.parts.push({ kind: 'field', value: '' }); structural(); } }),
+      el('button', { class: 'link', text: M('dv.part.addText'), onclick: () => { s.parts.push({ kind: 'text', value: '' }); structural(); } })]));
+  } else {
+    const t = text(k + '.expr', s.expr, (v) => { s.expr = v; }, '', 40);
+    t.classList.add('mono');
+    box.appendChild(row([lbl(M('dv.add.expr')), t]));
+  }
 }
 
 const LIST_STEPS = ['filter', 'sort', 'distinct', 'reverse', 'merge', 'compare', 'append', 'columns', 'drop', 'flatten', 'change', 'skip', 'limit'];
@@ -627,8 +803,10 @@ function renameResult(from, to) {
     q.source = moved(q.source);
     for (const s of q.steps || []) {
       if (s.other) s.other = moved(s.other);
-      if (s.from === 'input' && s.path) s.path = moved(s.path);
-      if (s.from === 'expr' && s.expr) s.expr = String(s.expr).replace(word, (m, pre) => pre + to);
+      for (const x of [s].concat(s.kind === 'add' && Array.isArray(s.more) ? s.more : [])) {
+        if (x.from === 'input' && x.path) x.path = moved(x.path);
+        if (x.from === 'expr' && x.expr) x.expr = String(x.expr).replace(word, (m, pre) => pre + to);
+      }
     }
   }
 }
@@ -667,12 +845,58 @@ function commentRow(p, pi, r) {
   }
   return el('div', { class: 'row' }, kids);
 }
-function moveStep(p, si, by) {
-  const to = si + by;
-  if (to < 0 || to >= p.steps.length) return;
-  const [step] = p.steps.splice(si, 1);
+function moveStepTo(p, from, to, pi) {
+  if (to < 0 || to >= p.steps.length || from === to) return;
+  const [step] = p.steps.splice(from, 1);
   p.steps.splice(to, 0, step);
+  if (pi !== undefined) resetFolds(pi);
+  flash(to);
   structural();
+}
+function moveStep(p, si, by, pi) { moveStepTo(p, si, si + by, pi); }
+// A table folded under a line; the last one of a transformation open.
+function fold(key, label, v, open, cat) {
+  const d = el('details', { class: 'fold fold-' + cat });
+  d.open = tableOpen[key] !== undefined ? tableOpen[key] : open;
+  const info = v.kind === 'value' ? (v.text === '' || v.text === undefined ? '—' : String(v.text)) : sizeText(v);
+  d.appendChild(el('summary', {}, [el('span', { class: 'fold-l', text: label }), el('span', { class: 'fold-n', text: info })]));
+  d.addEventListener('toggle', () => {
+    tableOpen[key] = d.open;
+    if (d.open && !d.querySelector('.tbl-wrap,.value')) d.appendChild(table(v));
+  });
+  if (d.open) d.appendChild(table(v));
+  return d;
+}
+const STEP_GROUPS = {
+  list: [['rows', ['filter', 'sort', 'distinct', 'reverse', 'skip', 'limit']], ['fields', ['columns', 'drop', 'flatten', 'change', 'add']],
+    ['combine', ['merge', 'compare', 'append']], ['value', ['first', 'last', 'nth', 'count', 'sum', 'min', 'max', 'avg', 'join']]],
+  object: [['fields', ['columns', 'drop', 'flatten', 'change', 'add', 'take', 'asList']], ['combine', ['merge']]],
+  value: [['fields', ['change']]]
+};
+function addStepMenu(p, pi, r, endKind, cols) {
+  const wrap = el('div', { class: 'addwrap' });
+  wrap.appendChild(el('button', { type: 'button', class: 'primary addbtn', 'aria-haspopup': 'true', 'aria-expanded': addMenu ? 'true' : 'false',
+    onclick: () => { addMenu = !addMenu; render(); } }, [M('dv.addStepMenu'), el('span', { class: 'caret', text: addMenu ? '▴' : '▾' })]));
+  wrap.appendChild(el('span', { class: 'lbl', text: M('dv.addStepOn', { kind: M('dv.kind.' + endKind + '.one') }) }));
+  if (addMenu) {
+    const menu = el('div', { class: 'menu', role: 'menu' });
+    for (const [cat, kinds] of STEP_GROUPS[endKind] || STEP_GROUPS.value) {
+      menu.appendChild(el('div', { class: 'mgroup cat-' + cat }, [
+        el('div', { class: 'mcap', text: M('dv.group.' + cat) }),
+        el('div', { class: 'mitems' }, kinds.map((kind) => el('button', { type: 'button', class: 'mitem', role: 'menuitem',
+          onclick: () => {
+            (p.steps = p.steps || []).push(newStep(kind, r.endColumns || cols));
+            addMenu = false;
+            resetFolds(pi);
+            flash(p.steps.length - 1);
+            structural();
+            goToStep(p.steps.length - 1);
+          } }, [stepLabel(kind, endKind)])))
+      ]));
+    }
+    wrap.appendChild(menu);
+  }
+  return wrap;
 }
 function renderWork() {
   const box = $('work');
@@ -701,44 +925,35 @@ function renderWork() {
       nameField(pi, p)
     ]));
     const body = el('div', { class: 'card-body' });
+    const steps = p.steps || [];
     if (r && r.nameError) body.appendChild(el('div', { class: 'err', text: errorText(r.nameError) }));
     if (!p.source && !sources.length) body.appendChild(el('div', { class: 'dim', text: M('dv.noLists') }));
     else if (r && r.error) body.appendChild(el('div', { class: 'err', text: errorText(r.error) }));
-    else if (r && r.sourceView) body.appendChild(table(r.sourceView));
+    else if (r && r.sourceView) body.appendChild(fold('p' + pi + '.src', M('dv.sourceData'), r.sourceView, !steps.length, 'src'));
     let cols = r && r.sourceColumns ? r.sourceColumns : [];
     let kindNow = r && r.sourceKind ? r.sourceKind : 'list';
-    (p.steps || []).forEach((s, si) => {
+    steps.forEach((s, si) => {
       const sr = r && r.steps ? r.steps[si] : null;
       if (sr && sr.columns) cols = sr.columns;
       else if (!sr && r && r.endColumns) cols = r.endColumns;
       if (sr && sr.kindBefore) kindNow = sr.kindBefore;
-      const st = el('div', { class: 'step' });
+      const st = el('div', { class: 'step cat-' + catOf(s.kind) + (flashStep && flashStep.si === si && Date.now() < flashStep.until ? ' flash' : ''), id: 'step-' + si });
       st.appendChild(el('div', { class: 'step-head' }, [
-        el('span', { class: 'step-no', text: (si + 1) + '.' }),
+        el('span', { class: 'step-no', text: String(si + 1) }),
         el('span', { class: 'step-name', text: stepLabel(s.kind, kindNow) }),
         el('span', { class: 'grow' }),
-        el('button', { class: 'mv', text: '↑', title: M('dv.stepUp'), 'aria-label': M('dv.stepUp'), disabled: si === 0, onclick: () => moveStep(p, si, -1) }),
-        el('button', { class: 'mv', text: '↓', title: M('dv.stepDown'), 'aria-label': M('dv.stepDown'), disabled: si === p.steps.length - 1, onclick: () => moveStep(p, si, 1) }),
-        el('button', { class: 'x', text: '✕', title: M('dv.removeStep'), onclick: () => { p.steps.splice(si, 1); structural(); } })
+        el('button', { class: 'mv', text: '↑', title: M('dv.stepUp'), 'aria-label': M('dv.stepUp'), disabled: si === 0, onclick: () => moveStep(p, si, -1, pi) }),
+        el('button', { class: 'mv', text: '↓', title: M('dv.stepDown'), 'aria-label': M('dv.stepDown'), disabled: si === steps.length - 1, onclick: () => moveStep(p, si, 1, pi) }),
+        el('button', { class: 'x', text: '✕', title: M('dv.removeStep'), onclick: () => { p.steps.splice(si, 1); resetFolds(pi); structural(); } })
       ]));
       st.appendChild(stepForm(p, pi, s, si, cols, sources, colsOf, kindNow, sr && sr.fields ? sr.fields : []));
       if (sr && sr.error) st.appendChild(el('div', { class: 'err', text: errorText(sr.error) }));
-      else if (sr && sr.view) st.appendChild(table(sr.view));
+      else if (sr && sr.view) st.appendChild(fold('p' + pi + '.s' + si, M('dv.stepResult'), sr.view, si === steps.length - 1, catOf(s.kind)));
       body.appendChild(st);
     });
     const endKind = r && r.endKind ? r.endKind : kindNow;
     const broken = r && r.steps && r.steps.some((x) => x.error);
-    if (p.source && r && r.sourceView && !broken) {
-      const adds = el('div', { class: 'adds' }, [el('span', { class: 'lbl', text: M('dv.addStep') + ' (' + M('dv.kind.' + endKind + '.one') + ')' })]);
-      const button = (kind) => adds.appendChild(el('button', { class: 'secondary', text: stepLabel(kind, endKind), onclick: () => { (p.steps = p.steps || []).push(newStep(kind, r.endColumns || cols)); structural(); } }));
-      if (endKind === 'list') {
-        LIST_STEPS.concat(['add']).forEach(button);
-        adds.appendChild(el('span', { class: 'lbl', text: '  ' + M('dv.takeOne') }));
-        VALUE_STEPS.forEach(button);
-      } else if (endKind === 'object') OBJECT_STEPS.forEach(button);
-      else button('change');
-      body.appendChild(adds);
-    }
+    if (p.source && r && r.sourceView && !broken) body.appendChild(addStepMenu(p, pi, r, endKind, cols));
     if (r && r.text !== undefined) {
       body.appendChild(el('div', { class: 'row result-row' }, [
         el('span', { class: 'lbl', text: M('dv.result') }),
@@ -783,7 +998,13 @@ $('asFlow').addEventListener('click', () => vscodeApi.postMessage({ type: 'openA
 $('undoBtn').addEventListener('click', undo);
 $('redoBtn').addEventListener('click', redo);
 $('saveBtn').addEventListener('click', save);
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && (openInput !== null || drill)) { e.preventDefault(); closeOverlay(); } });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && addMenu) { e.preventDefault(); addMenu = false; render(); return; }
+  if (e.key === 'Escape' && (openInput !== null || drill)) { e.preventDefault(); closeOverlay(); }
+});
+document.addEventListener('click', (e) => {
+  if (addMenu && !(e.target.closest && e.target.closest('.addwrap'))) { addMenu = false; render(); }
+});
 window.addEventListener('message', (e) => {
   const m = e.data || {};
   if (m.algorithms) algorithms = m.algorithms;
