@@ -304,7 +304,8 @@ properties, `// …` in JSON (JSON with comments). The field can stay in the
 data or be left out. CSV has no comments.
 
 Select **Open in editor** to open the generated result in a new VS Code editor
-tab, or **Copy** to put it on the clipboard.
+tab, or **Copy** to put it on the clipboard; **Copy** is also in the top right
+corner of the result code.
 
 ## Logic Spec Integration
 

@@ -14,6 +14,8 @@
   under a line with their size, and open when it is selected.
 - **+ Add a step** opens a menu of the operations, grouped, instead of a row
   of buttons under the table.
+- **Copy** in the top right corner of the result code puts it on the
+  clipboard.
 - Colours: each group of steps has its own, the same in the menu, the left
   panel, the step and its table.
 

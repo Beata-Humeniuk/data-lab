@@ -967,7 +967,16 @@ function renderWork() {
         } })
       ]));
       body.appendChild(commentRow(p, pi, r));
-      body.appendChild(el('pre', { text: r.text }));
+      body.appendChild(el('div', { class: 'codebox' }, [
+        el('pre', { text: r.text }),
+        el('button', { type: 'button', class: 'codecopy', title: M('dv.copyTitle'), 'aria-label': M('dv.copyTitle'), onclick: (e) => {
+          vscodeApi.postMessage({ type: 'copyOutput', text: r.text });
+          const b = e.currentTarget;
+          b.textContent = '✓ ' + M('dv.copied');
+          b.classList.add('done');
+          setTimeout(() => { if (b.isConnected) { b.textContent = M('dv.copy'); b.classList.remove('done'); } }, 1500);
+        } }, [M('dv.copy')])
+      ]));
     }
     card.appendChild(body);
     box.appendChild(card);

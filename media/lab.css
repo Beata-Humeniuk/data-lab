@@ -189,3 +189,8 @@ header::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px
 .result-row{padding:8px 10px;border-radius:6px;background:var(--t-fields);border-left:3px solid var(--c-fields)}
 .result-row .lbl{font-weight:600;color:var(--fg)}
 pre{border-left:3px solid var(--c-fields)}
+.codebox{position:relative}
+.codebox pre{padding-right:80px}
+.codebox .codecopy{position:absolute;top:6px;right:8px;font-size:11.5px;padding:2px 9px;background:var(--panel);color:var(--fg);border:1px solid var(--border);opacity:.85}
+.codebox .codecopy:hover{opacity:1;border-color:var(--c-fields)}
+.codebox .codecopy.done{border-color:var(--c-fields);color:var(--c-fields)}
