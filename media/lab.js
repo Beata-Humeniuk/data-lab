@@ -111,6 +111,26 @@ function sourcePick(key, value, sources, onChange, only) {
   s.addEventListener('change', (e) => onChange(e.target.value));
   return s;
 }
+// Small line icons, drawn in the colour of the text.
+const ICONS = {
+  copy: ['M9 9h10v10H9z', 'M5 15V5h10'],
+  check: ['M5 12.5l4.5 4.5L19 7.5']
+};
+function icon(name) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', '14');
+  svg.setAttribute('height', '14');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', 'icon');
+  ICONS[name].forEach((d) => {
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', d);
+    svg.appendChild(path);
+  });
+  return svg;
+}
 function columnPick(key, value, columns, onChange, emptyLabel) {
   const opts = [['', emptyLabel || M('dv.pickColumn')]].concat((columns || []).map((c) => [c, c === '' ? M('dv.wholeValue') : c]));
   return pick(key, value, opts, onChange);
@@ -995,25 +1015,26 @@ function renderWork() {
       body.appendChild(el('div', { class: 'row result-row' }, [
         el('span', { class: 'lbl', text: M('dv.result') }),
         pick('p' + pi + '.fmt', doc.format || 'json', [['json', 'JSON'], ['xml', 'XML'], ['yaml', 'YAML'], ['csv', 'CSV'], ['properties', 'properties']], (v) => { doc.format = v; structural(); }),
-        el('button', { class: 'link', text: M('run.openEditor'), onclick: () => vscodeApi.postMessage({ type: 'openOutput', text: r.text, format: doc.format || 'json', comments: !!(p.comment && p.comment.field) }) }),
-        el('button', { class: 'link', 'data-key': 'p' + pi + '.copy', text: M('dv.copy'), title: M('dv.copyTitle'), onclick: (e) => {
-          vscodeApi.postMessage({ type: 'copyOutput', text: r.text });
-          const b = e.currentTarget;
-          b.textContent = M('dv.copied');
-          setTimeout(() => { if (b.isConnected) b.textContent = M('dv.copy'); }, 1500);
-        } })
+        el('button', { class: 'link', text: M('run.openEditor'), onclick: () => vscodeApi.postMessage({ type: 'openOutput', text: r.text, format: doc.format || 'json', comments: !!(p.comment && p.comment.field) }) })
       ]));
       body.appendChild(commentRow(p, pi, r));
-      body.appendChild(el('div', { class: 'codebox' }, [
-        el('pre', { text: r.text }),
-        el('button', { type: 'button', class: 'codecopy', title: M('dv.copyTitle'), 'aria-label': M('dv.copyTitle'), onclick: (e) => {
-          vscodeApi.postMessage({ type: 'copyOutput', text: r.text });
-          const b = e.currentTarget;
-          b.textContent = '✓ ' + M('dv.copied');
-          b.classList.add('done');
-          setTimeout(() => { if (b.isConnected) { b.textContent = M('dv.copy'); b.classList.remove('done'); } }, 1500);
-        } }, [M('dv.copy')])
-      ]));
+      const pre = el('pre', { text: r.text });
+      const copy = el('button', { type: 'button', class: 'codecopy', title: M('dv.copyTitle'), 'aria-label': M('dv.copyTitle'), onclick: (e) => {
+        vscodeApi.postMessage({ type: 'copyOutput', text: r.text });
+        const b = e.currentTarget;
+        b.replaceChildren(icon('check'));
+        b.classList.add('done');
+        b.title = M('dv.copied');
+        setTimeout(() => { if (b.isConnected) { b.replaceChildren(icon('copy')); b.classList.remove('done'); b.title = M('dv.copyTitle'); } }, 1500);
+      } }, [icon('copy')]);
+      body.appendChild(el('div', { class: 'codebox' }, [pre, copy]));
+      // Keep the button clear of the scrollbar of the text.
+      requestAnimationFrame(() => {
+        if (!pre.isConnected) return;
+        const cs = getComputedStyle(pre);
+        const bar = pre.offsetWidth - pre.clientWidth - parseFloat(cs.borderLeftWidth) - parseFloat(cs.borderRightWidth);
+        copy.style.right = (8 + Math.max(0, bar)) + 'px';
+      });
     }
     card.appendChild(body);
     box.appendChild(card);

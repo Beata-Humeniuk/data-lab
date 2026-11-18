@@ -197,7 +197,8 @@ header::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px
 .result-row .lbl{font-weight:600;color:var(--fg)}
 pre{border-left:3px solid var(--c-fields)}
 .codebox{position:relative}
-.codebox pre{padding-right:80px}
-.codebox .codecopy{position:absolute;top:6px;right:8px;font-size:11.5px;padding:2px 9px;background:var(--panel);color:var(--fg);border:1px solid var(--border);opacity:.85}
+.codebox pre{padding-right:44px}
+.codebox .codecopy{position:absolute;top:6px;right:8px;display:flex;align-items:center;justify-content:center;width:26px;height:24px;padding:0;background:var(--panel);color:var(--fg);border:1px solid var(--border);border-radius:4px;opacity:.85;cursor:pointer}
+.codebox .codecopy .icon{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .codebox .codecopy:hover{opacity:1;border-color:var(--c-fields)}
 .codebox .codecopy.done{border-color:var(--c-fields);color:var(--c-fields)}

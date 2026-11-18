@@ -207,7 +207,6 @@ const EN = {
   "dv.column": "column",
   "dv.saveAs": "save as",
   "dv.sameColumn": "the same column",
-  "dv.copy": "Copy",
   "dv.copyTitle": "Copy the result to the clipboard",
   "dv.copied": "Copied",
   "dv.comment": "comment before each element",

@@ -5,6 +5,8 @@
 - Remove columns shows the fields as a tree of checkboxes instead of a long
   list of nested paths: a field with fields inside opens below its row, with
   the number of ticked ones inside; ticking it removes it with all it holds.
+- The result is copied with an icon in its corner, which keeps clear of the
+  scrollbar; the second Copy above the result is gone.
 
 ## [1.5.0] - 2026-11-17
 
