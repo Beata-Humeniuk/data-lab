@@ -133,6 +133,57 @@ function columnsPick(key, values, columns, onChange, emptyLabel) {
   if (rest.length > 1) box.appendChild(el('button', { type: 'button', class: 'link small', text: M('dv.multi.all'), title: M('dv.multi.allTitle'), onclick: () => onChange(values.concat(rest)) }));
   return box;
 }
+// The fields of the data as a tree of checkboxes: one row per level, a field with
+// fields inside opens below its row. Ticking a field removes it with everything in it.
+const dropOpen = {};
+function dropTree(key, s, fields) {
+  const known = {};
+  fields.forEach((f) => { known[f.path] = f; });
+  const kids = {};
+  fields.forEach((f) => {
+    const at = f.path.lastIndexOf('.');
+    const parent = at < 0 ? '' : f.path.slice(0, at);
+    (kids[parent] = kids[parent] || []).push(f.path);
+  });
+  // Ticked paths no longer in the data stay visible on the top row, so they can be unticked.
+  s.fields.forEach((p) => { if (!known[p]) (kids[''] = kids[''] || []).push(p); });
+  const name = (p) => p.slice(p.lastIndexOf('.') + 1);
+  const under = (p, q) => q.indexOf(p + '.') === 0;
+  const coveredBy = (p) => s.fields.find((q) => under(q, p));
+  const chosenInside = (p) => s.fields.filter((q) => under(p, q)).length;
+  const toggle = (p, on) => {
+    if (on) { s.fields = s.fields.filter((q) => !under(p, q)); if (s.fields.indexOf(p) < 0) s.fields.push(p); }
+    else s.fields = s.fields.filter((q) => q !== p);
+    structural();
+  };
+  const level = (parent) => {
+    const wrap = el('div', { class: 'drop-level' });
+    const checks = el('div', { class: 'checks' });
+    const opened = [];
+    (kids[parent] || []).forEach((p) => {
+      const cb = el('input', { type: 'checkbox' });
+      const cover = coveredBy(p);
+      cb.checked = !!cover || s.fields.indexOf(p) >= 0;
+      if (cover) { cb.disabled = true; cb.title = M('dv.drop.coveredBy', { path: cover }); }
+      cb.addEventListener('change', () => toggle(p, cb.checked));
+      const item = el('span', { class: 'drop-item' }, [el('label', { title: p }, [cb, parent ? name(p) : p])]);
+      if (kids[p]) {
+        const open = !!dropOpen[key + '|' + p];
+        const n = chosenInside(p);
+        item.appendChild(el('button', { type: 'button', class: 'drop-open' + (open ? ' on' : ''), 'aria-expanded': String(open),
+          title: M(open ? 'dv.drop.close' : 'dv.drop.open', { path: p }),
+          onclick: () => { dropOpen[key + '|' + p] = !open; render(); } },
+          [(open ? '▾ ' : '▸ ') + kids[p].length + (n ? ' · ' + M('dv.drop.chosen', { count: n }) : '')]));
+        if (open) opened.push(p);
+      }
+      checks.appendChild(item);
+    });
+    wrap.appendChild(checks);
+    opened.forEach((p) => wrap.appendChild(el('div', { class: 'drop-sub' }, [el('div', { class: 'drop-path', text: p.split('.').join(' › ') }), level(p)])));
+    return wrap;
+  };
+  return level('');
+}
 function fieldsIn(x) {
   if (Array.isArray(x.fields) && x.fields.length) return x.fields.slice();
   return x.field !== undefined && x.field !== null && String(x.field).trim() ? [x.field] : [];
@@ -598,25 +649,11 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
     case 'drop': {
       s.fields = Array.isArray(s.fields) ? s.fields : [];
       const top = fields.filter((f) => f.path.indexOf('.') < 0).map((f) => f.path);
-      const shown = top.concat(s.fields.filter((f) => top.indexOf(f) < 0));
-      const checks = el('div', { class: 'checks' }, shown.map((c) => {
-        const cb = el('input', { type: 'checkbox' });
-        cb.checked = s.fields.indexOf(c) >= 0;
-        cb.addEventListener('change', () => {
-          const at2 = s.fields.indexOf(c);
-          if (cb.checked && at2 < 0) s.fields.push(c);
-          if (!cb.checked && at2 >= 0) s.fields.splice(at2, 1);
-          structural();
-        });
-        return el('label', {}, [cb, c]);
-      }));
-      box.appendChild(row([lbl(M('dv.drop.which')), checks]));
+      box.appendChild(row([lbl(M('dv.drop.which')), dropTree(k, s, fields)]));
       box.appendChild(row([
-        el('button', { class: 'link small', text: M('dv.drop.all'), onclick: () => { top.forEach((c) => { if (s.fields.indexOf(c) < 0) s.fields.push(c); }); structural(); } }),
+        el('button', { class: 'link small', text: M('dv.drop.all'), onclick: () => { s.fields = top.slice(); structural(); } }),
         s.fields.length ? el('button', { class: 'link small', text: M('dv.drop.none'), onclick: () => { s.fields = []; structural(); } }) : null
       ]));
-      const deep = fields.filter((f) => f.path.indexOf('.') > 0 && s.fields.indexOf(f.path) < 0).map((f) => f.path);
-      if (deep.length) box.appendChild(row([lbl(M('dv.drop.nested')), columnPick(k + '.deep', '', deep, (v) => { if (v) s.fields.push(v); structural(); }, M('dv.drop.pickNested'))]));
       break;
     }
     case 'flatten': {

@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+- Remove columns shows the fields as a tree of checkboxes instead of a long
+  list of nested paths: a field with fields inside opens below its row, with
+  the number of ticked ones inside; ticking it removes it with all it holds.
+
 ## [1.5.0] - 2026-11-17
 
 - Several columns in one step: a Filter condition on several columns (**any

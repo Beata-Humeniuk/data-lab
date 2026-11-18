@@ -177,7 +177,10 @@ A step can work on several columns together:
   are the same.
 - **Change column**: the transformation changes each column picked, in its
   place.
-- **Remove columns**: **all** and **none** tick or clear every column.
+- **Remove columns**: **all** and **none** tick or clear every column. A
+  field with fields inside has a **▸** button that opens them below as one
+  more row of checkboxes; ticking the field itself removes it with everything
+  in it.
 - **Add field**: **+ another field** adds more fields in the same step; a
   field sees the ones added before it.
 - **Output fields**: **+ all the others** adds every column not taken yet.
