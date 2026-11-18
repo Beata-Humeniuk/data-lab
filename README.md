@@ -183,6 +183,10 @@ A step can work on several columns together:
   in it.
 - **Add field**: **+ another field** adds more fields in the same step; a
   field sees the ones added before it.
+  **+ value when…** gives the field another value for the elements that meet
+  conditions (the same conditions as in Filter): the first case met gives the
+  value, the others get the value after **otherwise**. With no case, the
+  field has one value for all.
 - **Output fields**: **+ all the others** adds every column not taken yet.
 
 Pick columns from **+ column**; **all** adds every column not picked yet, and

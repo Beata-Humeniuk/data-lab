@@ -523,25 +523,7 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
   const lbl = (t) => el('span', { class: 'lbl', text: t });
   switch (s.kind) {
     case 'filter': {
-      s.conditions = s.conditions || [];
-      if (!s.conditions.length) s.conditions.push({ field: '', op: 'eq', value: '', valueKind: 'const' });
-      s.conditions.forEach((c, ci) => {
-        const fs = fieldsIn(c);
-        const kids = [
-          ci === 0 ? lbl(M('dv.where')) : lbl(s.join === 'or' ? M('dv.or') : M('dv.and')),
-          fs.length > 1 ? pick(k + '.c' + ci + '.m', c.match === 'all' ? 'all' : 'any', [['any', M('dv.match.any')], ['all', M('dv.match.all')]], (v) => { c.match = v; structural(); }, M('dv.match.title')) : null,
-          columnsPick(k + '.c' + ci + '.f', fs, cols, (v) => { setFields(c, v); structural(); }),
-          pick(k + '.c' + ci + '.op', c.op || 'eq', OPS.map((o) => [o, M('cond.op.' + o)]), (v) => { c.op = v; structural(); })
-        ];
-        if (NO_VALUE.indexOf(c.op) < 0) kids.push(text(k + '.c' + ci + '.v', c.value, (v) => { c.value = v; c.valueKind = 'const'; }, '', 14));
-        if (c.op === 'between') kids.push(lbl(M('dv.andValue')), text(k + '.c' + ci + '.v2', c.value2, (v) => { c.value2 = v; c.value2Kind = 'const'; }, '', 14));
-        if (s.conditions.length > 1) kids.push(el('button', { class: 'x', text: '✕', onclick: () => { s.conditions.splice(ci, 1); structural(); } }));
-        box.appendChild(row(kids));
-      });
-      box.appendChild(row([
-        el('button', { class: 'link', text: M('dv.addCondition'), onclick: () => { s.conditions.push({ field: '', op: 'eq', value: '', valueKind: 'const' }); structural(); } }),
-        s.conditions.length > 1 ? pick(k + '.join', s.join === 'or' ? 'or' : 'and', [['and', M('dv.joinAnd')], ['or', M('dv.joinOr')]], (v) => { s.join = v; structural(); }) : null
-      ]));
+      condsEditor(box, k, s, cols, true);
       break;
     }
     case 'sort': {
@@ -704,7 +686,7 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
     }
     case 'add': {
       const items = [s].concat(Array.isArray(s.more) ? s.more : []);
-      const ITEM_KEYS = ['name', 'from', 'value', 'column', 'path', 'how', 'parts', 'expr'];
+      const ITEM_KEYS = ['name', 'from', 'value', 'column', 'path', 'how', 'parts', 'expr', 'cases'];
       const removeItem = (ii) => {
         if (ii > 0) s.more.splice(ii - 1, 1);
         else {
@@ -732,17 +714,39 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
   return box;
 }
 
+const FROM_KINDS = ['const', 'column', 'calc', 'parts', 'input', 'expr'];
+function fromPick(k, s) {
+  return pick(k + '.from', s.from || 'const', FROM_KINDS.map((f) => [f, M('dv.add.' + f)]), (v) => {
+    s.from = v;
+    if (v === 'parts' && !(s.parts && s.parts.length)) s.parts = [{ kind: 'field', value: '' }, { kind: 'text', value: ' ' }, { kind: 'field', value: '' }];
+    if (v === 'calc') s.how = s.how || { kind: '' };
+    structural();
+  });
+}
 function addItemForm(box, k, s, cols, sources, kindBefore, tail) {
   const row = (kids) => el('div', { class: 'row' }, kids);
   const lbl = (t) => el('span', { class: 'lbl', text: t });
+  const cases = Array.isArray(s.cases) ? s.cases : [];
+  const newCase = () => { (s.cases = s.cases || []).push({ conditions: [{ field: '', op: 'eq', value: '', valueKind: 'const' }], from: 'const', value: '' }); structural(); };
+  box.appendChild(row([lbl(M('dv.fieldName')), text(k + '.name', s.name, (v) => { s.name = v; }, '', 12), lbl('=')]
+    .concat(cases.length ? [] : [fromPick(k, s)]).concat(tail || [])));
+  cases.forEach((c, ci) => {
+    const ck = k + '.case' + ci;
+    const part = el('div', { class: 'addcase' });
+    condsEditor(part, ck, c, cols, false, M('dv.add.when'));
+    part.appendChild(row([lbl(M('dv.add.then')), fromPick(ck, c),
+      el('button', { class: 'x', text: '✕', title: M('dv.add.removeCase'), 'aria-label': M('dv.add.removeCase'), onclick: () => { s.cases.splice(ci, 1); if (!s.cases.length) delete s.cases; structural(); } })]));
+    valueForm(part, ck, c, cols, sources, kindBefore);
+    box.appendChild(part);
+  });
+  if (cases.length) box.appendChild(row([lbl(M('dv.add.otherwise')), fromPick(k, s)]));
+  valueForm(box, k, s, cols, sources, kindBefore);
+  box.appendChild(row([el('button', { class: 'link small', text: M('dv.add.addCase'), title: M('dv.add.addCaseTitle'), onclick: newCase })]));
+}
+function valueForm(box, k, s, cols, sources, kindBefore) {
+  const row = (kids) => el('div', { class: 'row' }, kids);
+  const lbl = (t) => el('span', { class: 'lbl', text: t });
   const from = s.from || 'const';
-  box.appendChild(row([lbl(M('dv.fieldName')), text(k + '.name', s.name, (v) => { s.name = v; }, '', 12), lbl('='),
-    pick(k + '.from', from, [['const', M('dv.add.const')], ['column', M('dv.add.column')], ['calc', M('dv.add.calc')], ['parts', M('dv.add.parts')], ['input', M('dv.add.input')], ['expr', M('dv.add.expr')]], (v) => {
-      s.from = v;
-      if (v === 'parts' && !(s.parts && s.parts.length)) s.parts = [{ kind: 'field', value: '' }, { kind: 'text', value: ' ' }, { kind: 'field', value: '' }];
-      if (v === 'calc') s.how = s.how || { kind: '' };
-      structural();
-    })].concat(tail || [])));
   if (from === 'const') box.appendChild(row([lbl(M('dv.valuePh')), text(k + '.v', s.value, (v) => { s.value = v; }, '', 18)]));
   else if (from === 'column') box.appendChild(row([lbl(M(kindBefore === 'list' ? 'dv.column' : 'dv.field')), columnPick(k + '.c', s.column, cols, (v) => { s.column = v; structural(); })]));
   else if (from === 'input') box.appendChild(row([lbl(M('dv.add.from')), sourcePick(k + '.path', s.path, sources, (v) => { s.path = v; structural(); })]));
@@ -768,6 +772,32 @@ function addItemForm(box, k, s, cols, sources, kindBefore, tail) {
     t.classList.add('mono');
     box.appendChild(row([lbl(M('dv.add.expr')), t]));
   }
+}
+
+// Conditions on the fields of an element, all or any of them. Filter keeps one
+// row at least; a case of Add field can drop its last one.
+function condsEditor(box, k, s, cols, keepOne, firstLabel) {
+  const row = (kids) => el('div', { class: 'row' }, kids);
+  const lbl = (t) => el('span', { class: 'lbl', text: t });
+  s.conditions = s.conditions || [];
+  if (!s.conditions.length) s.conditions.push({ field: '', op: 'eq', value: '', valueKind: 'const' });
+  s.conditions.forEach((c, ci) => {
+    const fs = fieldsIn(c);
+    const kids = [
+      ci === 0 ? lbl(firstLabel || M('dv.where')) : lbl(s.join === 'or' ? M('dv.or') : M('dv.and')),
+      fs.length > 1 ? pick(k + '.c' + ci + '.m', c.match === 'all' ? 'all' : 'any', [['any', M('dv.match.any')], ['all', M('dv.match.all')]], (v) => { c.match = v; structural(); }, M('dv.match.title')) : null,
+      columnsPick(k + '.c' + ci + '.f', fs, cols, (v) => { setFields(c, v); structural(); }),
+      pick(k + '.c' + ci + '.op', c.op || 'eq', OPS.map((o) => [o, M('cond.op.' + o)]), (v) => { c.op = v; structural(); })
+    ];
+    if (NO_VALUE.indexOf(c.op) < 0) kids.push(text(k + '.c' + ci + '.v', c.value, (v) => { c.value = v; c.valueKind = 'const'; }, '', 14));
+    if (c.op === 'between') kids.push(lbl(M('dv.andValue')), text(k + '.c' + ci + '.v2', c.value2, (v) => { c.value2 = v; c.value2Kind = 'const'; }, '', 14));
+    if (s.conditions.length > 1 || !keepOne) kids.push(el('button', { class: 'x', text: '✕', onclick: () => { s.conditions.splice(ci, 1); structural(); } }));
+    box.appendChild(row(kids));
+  });
+  box.appendChild(row([
+    el('button', { class: 'link', text: M('dv.addCondition'), onclick: () => { s.conditions.push({ field: '', op: 'eq', value: '', valueKind: 'const' }); structural(); } }),
+    s.conditions.length > 1 ? pick(k + '.join', s.join === 'or' ? 'or' : 'and', [['and', M('dv.joinAnd')], ['or', M('dv.joinOr')]], (v) => { s.join = v; structural(); }) : null
+  ]));
 }
 
 const LIST_STEPS = ['filter', 'sort', 'distinct', 'reverse', 'merge', 'compare', 'append', 'columns', 'drop', 'flatten', 'change', 'skip', 'limit'];
@@ -860,7 +890,8 @@ function renameResult(from, to) {
     q.source = moved(q.source);
     for (const s of q.steps || []) {
       if (s.other) s.other = moved(s.other);
-      for (const x of [s].concat(s.kind === 'add' && Array.isArray(s.more) ? s.more : [])) {
+      const items = [s].concat(s.kind === 'add' && Array.isArray(s.more) ? s.more : []);
+      for (const x of [].concat(...items.map((y) => [y].concat(Array.isArray(y.cases) ? y.cases : [])))) {
         if (x.from === 'input' && x.path) x.path = moved(x.path);
         if (x.from === 'expr' && x.expr) x.expr = String(x.expr).replace(word, (m, pre) => pre + to);
       }

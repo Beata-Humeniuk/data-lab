@@ -12,6 +12,9 @@
 - **name in the output** for properties and XML: the key prefix or root
   element of the result text, with dots and dashes allowed
   (`product.product-list`), apart from the result name other steps refer to.
+- Add field takes a value by conditions: **+ value when…** adds a case with
+  its conditions and value; the first case met wins, else the value after
+  **otherwise**.
 
 ## [1.5.0] - 2026-11-17
 

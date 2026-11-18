@@ -305,3 +305,21 @@ runChecks([
     [JSON.stringify(q('addO').result) === '{"a":" s ","b":" t ","k":"1","m":"1"}', 'several fields added to an object']
   ]);
 }
+
+{
+  const { runDocument } = require('../src/dataPipeline');
+  const { stepText } = require('../src/algorithmMd');
+  const step = { kind: 'add', name: 'variants', from: 'const', value: 'INDV', cases: [
+    { conditions: [{ field: 'type', op: 'eq', value: 'J', valueKind: 'const' }], from: 'const', value: 'INDV,JOIN' },
+    { conditions: [{ field: 'n', op: 'gt', value: '4', valueKind: 'const' }, { field: 'type', op: 'eq', value: 'X', valueKind: 'const' }], join: 'or', from: 'column', column: 'type' },
+    { conditions: [{ field: '', op: 'eq', value: '' }], from: 'const', value: 'never' }
+  ] };
+  const d = { inputs: [{ name: 'l', text: '[{"type":"J","n":1},{"type":"K","n":5},{"type":"X","n":1},{"type":"K","n":1}]' }, { name: 'o', text: '{"type":"J"}' }],
+    pipelines: [{ name: 'a', source: 'l', steps: [step] }, { name: 'b', source: 'o', steps: [step] }] };
+  const r = runDocument(d, {});
+  runChecks([
+    [JSON.stringify(r.pipelines[0].result.map((x) => x.variants)) === '["INDV,JOIN","K","X","INDV"]', 'Add field: the value of the first case met, else the value after otherwise; a case with no condition never applies'],
+    [r.pipelines[1].result.variants === 'INDV,JOIN', 'Add field on an object: cases too'],
+    [stepText(step, []).includes('"INDV,JOIN" when `type` = `J`') && stepText(step, []).includes('otherwise "INDV"'), 'Markdown: the cases and otherwise']
+  ]);
+}

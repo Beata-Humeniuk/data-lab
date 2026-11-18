@@ -79,6 +79,13 @@ function sourcesOf(values, results) {
   return out;
 }
 
+// Every value an Add field step can take: its fields, and the values of their
+// cases (a value used when its conditions hold).
+function addValueSpecs(s) {
+  if (!s || typeof s !== 'object') return [];
+  const items = [s].concat(s.kind === 'add' && Array.isArray(s.more) ? s.more : []).filter((x) => x && typeof x === 'object');
+  return [].concat(...items.map((x) => [x].concat(Array.isArray(x.cases) ? x.cases.filter((c) => c && typeof c === 'object') : [])));
+}
 const NAME_IN_EXPR = /[\p{L}_][\p{L}\p{N}_]*/gu;
 function headOf(path) { return String(path || '').trim().split('.')[0]; }
 function refsOf(p) {
@@ -88,8 +95,7 @@ function refsOf(p) {
   for (const s of p.steps || []) {
     if (!s || typeof s !== 'object') continue;
     addPath(s.other);
-    for (const x of [s].concat(s.kind === 'add' && Array.isArray(s.more) ? s.more : [])) {
-      if (!x || typeof x !== 'object') continue;
+    for (const x of addValueSpecs(s)) {
       if (x.from === 'input') addPath(x.path);
       if (x.from === 'expr') for (const m of String(x.expr || '').match(NAME_IN_EXPR) || []) out.add(m);
     }
@@ -650,9 +656,19 @@ function changedAll(el, step, scope, ctx) {
 function addItems(step) {
   return [step].concat(Array.isArray(step.more) ? step.more : []).filter((x) => x && String(x.name || '').trim());
 }
+// The value of a field to add: of the first case whose conditions all hold
+// (or any, with join 'or'), else its own. A case with no condition is skipped.
+function addedChosen(it, el, root, scope, ctx, known) {
+  for (const c of Array.isArray(it.cases) ? it.cases : []) {
+    if (!c || typeof c !== 'object') continue;
+    const conditions = (c.conditions || []).filter((x) => fieldsOf(x).length);
+    if (conditions.length && filteredBy([el], { conditions, join: c.join }, root, ctx).length) return addedValue(c, el, root, scope, ctx, known);
+  }
+  return addedValue(it, el, root, scope, ctx, known);
+}
 function addedAll(el, items, root, scope, ctx, known) {
   let out = isPlainObject(el) ? clone(el) : { value: el };
-  for (const it of items) out = setPath(out, String(it.name).trim(), addedValue(it, isPlainObject(el) ? out : el, root, scope, ctx, known.concat(items.map((x) => String(x.name).trim()))));
+  for (const it of items) out = setPath(out, String(it.name).trim(), addedChosen(it, isPlainObject(el) ? out : el, root, scope, ctx, known.concat(items.map((x) => String(x.name).trim()))));
   return out;
 }
 
@@ -801,4 +817,4 @@ function changeCatalog(t) {
     params: k.params.map((p) => ({ key: p.key, label: p.labelKey ? t(p.labelKey) : p.key, def: p.def, size: p.size, options: p.options })) }));
 }
 
-module.exports = { RESULT_FORMATS, COMMENT_FORMATS, commentFieldsOf, outputText, csvText, deepFields, STEP_KINDS, LIST_STEPS, VALUE_STEPS, OBJECT_STEPS, stepsFor, kindOf, readInputs, listsIn, sourcesOf, columnsOf, runDocument, view, valueAt, asList, changeCatalog };
+module.exports = { addValueSpecs, RESULT_FORMATS, COMMENT_FORMATS, commentFieldsOf, outputText, csvText, deepFields, STEP_KINDS, LIST_STEPS, VALUE_STEPS, OBJECT_STEPS, stepsFor, kindOf, readInputs, listsIn, sourcesOf, columnsOf, runDocument, view, valueAt, asList, changeCatalog };

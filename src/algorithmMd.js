@@ -60,6 +60,13 @@ function howText(how, catalog) {
   }).join(' → ');
 }
 function addedOne(s, catalog) {
+  const cases = (Array.isArray(s.cases) ? s.cases : []).filter((c) => c && (c.conditions || []).some((x) => fieldsOf(x).length));
+  if (!cases.length) return valueOne(s, catalog);
+  return code(s.name) + ' = ' + cases.map((c) => valueOne(Object.assign({}, c, { name: '' }), catalog).replace(/^`` = /, '') + ' when ' +
+    c.conditions.filter((x) => fieldsOf(x).length).map(conditionText).join(c.join === 'or' ? ' or ' : ' and ')).join('; ') +
+    '; otherwise ' + valueOne(Object.assign({}, s, { name: '' }), catalog).replace(/^`` = /, '');
+}
+function valueOne(s, catalog) {
   const name = code(s.name);
   switch (s.from) {
     case 'column': return name + ' = ' + code(s.column);
@@ -140,7 +147,7 @@ function readsOf(pipeline) {
   const add = (p) => { const t = String(p || '').trim(); if (t && out.indexOf(t) < 0) out.push(t); };
   for (const s of pipeline.steps || []) {
     if (s.kind === 'merge' || s.kind === 'compare' || s.kind === 'append') add(s.other);
-    if (s.kind === 'add') [s].concat(Array.isArray(s.more) ? s.more : []).forEach((x) => { if (x && x.from === 'input') add(x.path); });
+    if (s.kind === 'add') [s].concat(Array.isArray(s.more) ? s.more : []).forEach((x) => { if (x) [x].concat(Array.isArray(x.cases) ? x.cases : []).forEach((y) => { if (y && y.from === 'input') add(y.path); }); });
   }
   return out;
 }
