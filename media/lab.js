@@ -111,6 +111,26 @@ function sourcePick(key, value, sources, onChange, only) {
   s.addEventListener('change', (e) => onChange(e.target.value));
   return s;
 }
+// Small line icons, drawn in the colour of the text.
+const ICONS = {
+  copy: ['M9 9h10v10H9z', 'M5 15V5h10'],
+  check: ['M5 12.5l4.5 4.5L19 7.5']
+};
+function icon(name) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', '14');
+  svg.setAttribute('height', '14');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', 'icon');
+  ICONS[name].forEach((d) => {
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', d);
+    svg.appendChild(path);
+  });
+  return svg;
+}
 function columnPick(key, value, columns, onChange, emptyLabel) {
   const opts = [['', emptyLabel || M('dv.pickColumn')]].concat((columns || []).map((c) => [c, c === '' ? M('dv.wholeValue') : c]));
   return pick(key, value, opts, onChange);
@@ -132,6 +152,57 @@ function columnsPick(key, values, columns, onChange, emptyLabel) {
   }
   if (rest.length > 1) box.appendChild(el('button', { type: 'button', class: 'link small', text: M('dv.multi.all'), title: M('dv.multi.allTitle'), onclick: () => onChange(values.concat(rest)) }));
   return box;
+}
+// The fields of the data as a tree of checkboxes: one row per level, a field with
+// fields inside opens below its row. Ticking a field removes it with everything in it.
+const dropOpen = {};
+function dropTree(key, s, fields) {
+  const known = {};
+  fields.forEach((f) => { known[f.path] = f; });
+  const kids = {};
+  fields.forEach((f) => {
+    const at = f.path.lastIndexOf('.');
+    const parent = at < 0 ? '' : f.path.slice(0, at);
+    (kids[parent] = kids[parent] || []).push(f.path);
+  });
+  // Ticked paths no longer in the data stay visible on the top row, so they can be unticked.
+  s.fields.forEach((p) => { if (!known[p]) (kids[''] = kids[''] || []).push(p); });
+  const name = (p) => p.slice(p.lastIndexOf('.') + 1);
+  const under = (p, q) => q.indexOf(p + '.') === 0;
+  const coveredBy = (p) => s.fields.find((q) => under(q, p));
+  const chosenInside = (p) => s.fields.filter((q) => under(p, q)).length;
+  const toggle = (p, on) => {
+    if (on) { s.fields = s.fields.filter((q) => !under(p, q)); if (s.fields.indexOf(p) < 0) s.fields.push(p); }
+    else s.fields = s.fields.filter((q) => q !== p);
+    structural();
+  };
+  const level = (parent) => {
+    const wrap = el('div', { class: 'drop-level' });
+    const checks = el('div', { class: 'checks' });
+    const opened = [];
+    (kids[parent] || []).forEach((p) => {
+      const cb = el('input', { type: 'checkbox' });
+      const cover = coveredBy(p);
+      cb.checked = !!cover || s.fields.indexOf(p) >= 0;
+      if (cover) { cb.disabled = true; cb.title = M('dv.drop.coveredBy', { path: cover }); }
+      cb.addEventListener('change', () => toggle(p, cb.checked));
+      const item = el('span', { class: 'drop-item' }, [el('label', { title: p }, [cb, parent ? name(p) : p])]);
+      if (kids[p]) {
+        const open = !!dropOpen[key + '|' + p];
+        const n = chosenInside(p);
+        item.appendChild(el('button', { type: 'button', class: 'drop-open' + (open ? ' on' : ''), 'aria-expanded': String(open),
+          title: M(open ? 'dv.drop.close' : 'dv.drop.open', { path: p }),
+          onclick: () => { dropOpen[key + '|' + p] = !open; render(); } },
+          [(open ? '▾ ' : '▸ ') + kids[p].length + (n ? ' · ' + M('dv.drop.chosen', { count: n }) : '')]));
+        if (open) opened.push(p);
+      }
+      checks.appendChild(item);
+    });
+    wrap.appendChild(checks);
+    opened.forEach((p) => wrap.appendChild(el('div', { class: 'drop-sub' }, [el('div', { class: 'drop-path', text: p.split('.').join(' › ') }), level(p)])));
+    return wrap;
+  };
+  return level('');
 }
 function fieldsIn(x) {
   if (Array.isArray(x.fields) && x.fields.length) return x.fields.slice();
@@ -452,25 +523,7 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
   const lbl = (t) => el('span', { class: 'lbl', text: t });
   switch (s.kind) {
     case 'filter': {
-      s.conditions = s.conditions || [];
-      if (!s.conditions.length) s.conditions.push({ field: '', op: 'eq', value: '', valueKind: 'const' });
-      s.conditions.forEach((c, ci) => {
-        const fs = fieldsIn(c);
-        const kids = [
-          ci === 0 ? lbl(M('dv.where')) : lbl(s.join === 'or' ? M('dv.or') : M('dv.and')),
-          fs.length > 1 ? pick(k + '.c' + ci + '.m', c.match === 'all' ? 'all' : 'any', [['any', M('dv.match.any')], ['all', M('dv.match.all')]], (v) => { c.match = v; structural(); }, M('dv.match.title')) : null,
-          columnsPick(k + '.c' + ci + '.f', fs, cols, (v) => { setFields(c, v); structural(); }),
-          pick(k + '.c' + ci + '.op', c.op || 'eq', OPS.map((o) => [o, M('cond.op.' + o)]), (v) => { c.op = v; structural(); })
-        ];
-        if (NO_VALUE.indexOf(c.op) < 0) kids.push(text(k + '.c' + ci + '.v', c.value, (v) => { c.value = v; c.valueKind = 'const'; }, '', 14));
-        if (c.op === 'between') kids.push(lbl(M('dv.andValue')), text(k + '.c' + ci + '.v2', c.value2, (v) => { c.value2 = v; c.value2Kind = 'const'; }, '', 14));
-        if (s.conditions.length > 1) kids.push(el('button', { class: 'x', text: '✕', onclick: () => { s.conditions.splice(ci, 1); structural(); } }));
-        box.appendChild(row(kids));
-      });
-      box.appendChild(row([
-        el('button', { class: 'link', text: M('dv.addCondition'), onclick: () => { s.conditions.push({ field: '', op: 'eq', value: '', valueKind: 'const' }); structural(); } }),
-        s.conditions.length > 1 ? pick(k + '.join', s.join === 'or' ? 'or' : 'and', [['and', M('dv.joinAnd')], ['or', M('dv.joinOr')]], (v) => { s.join = v; structural(); }) : null
-      ]));
+      condsEditor(box, k, s, cols, true);
       break;
     }
     case 'sort': {
@@ -598,25 +651,11 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
     case 'drop': {
       s.fields = Array.isArray(s.fields) ? s.fields : [];
       const top = fields.filter((f) => f.path.indexOf('.') < 0).map((f) => f.path);
-      const shown = top.concat(s.fields.filter((f) => top.indexOf(f) < 0));
-      const checks = el('div', { class: 'checks' }, shown.map((c) => {
-        const cb = el('input', { type: 'checkbox' });
-        cb.checked = s.fields.indexOf(c) >= 0;
-        cb.addEventListener('change', () => {
-          const at2 = s.fields.indexOf(c);
-          if (cb.checked && at2 < 0) s.fields.push(c);
-          if (!cb.checked && at2 >= 0) s.fields.splice(at2, 1);
-          structural();
-        });
-        return el('label', {}, [cb, c]);
-      }));
-      box.appendChild(row([lbl(M('dv.drop.which')), checks]));
+      box.appendChild(row([lbl(M('dv.drop.which')), dropTree(k, s, fields)]));
       box.appendChild(row([
-        el('button', { class: 'link small', text: M('dv.drop.all'), onclick: () => { top.forEach((c) => { if (s.fields.indexOf(c) < 0) s.fields.push(c); }); structural(); } }),
+        el('button', { class: 'link small', text: M('dv.drop.all'), onclick: () => { s.fields = top.slice(); structural(); } }),
         s.fields.length ? el('button', { class: 'link small', text: M('dv.drop.none'), onclick: () => { s.fields = []; structural(); } }) : null
       ]));
-      const deep = fields.filter((f) => f.path.indexOf('.') > 0 && s.fields.indexOf(f.path) < 0).map((f) => f.path);
-      if (deep.length) box.appendChild(row([lbl(M('dv.drop.nested')), columnPick(k + '.deep', '', deep, (v) => { if (v) s.fields.push(v); structural(); }, M('dv.drop.pickNested'))]));
       break;
     }
     case 'flatten': {
@@ -647,7 +686,7 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
     }
     case 'add': {
       const items = [s].concat(Array.isArray(s.more) ? s.more : []);
-      const ITEM_KEYS = ['name', 'from', 'value', 'column', 'path', 'how', 'parts', 'expr'];
+      const ITEM_KEYS = ['name', 'from', 'value', 'column', 'path', 'how', 'parts', 'expr', 'cases'];
       const removeItem = (ii) => {
         if (ii > 0) s.more.splice(ii - 1, 1);
         else {
@@ -675,17 +714,39 @@ function stepForm(p, pi, s, si, cols, sources, colsOf, kindBefore, fields) {
   return box;
 }
 
+const FROM_KINDS = ['const', 'column', 'calc', 'parts', 'input', 'expr'];
+function fromPick(k, s) {
+  return pick(k + '.from', s.from || 'const', FROM_KINDS.map((f) => [f, M('dv.add.' + f)]), (v) => {
+    s.from = v;
+    if (v === 'parts' && !(s.parts && s.parts.length)) s.parts = [{ kind: 'field', value: '' }, { kind: 'text', value: ' ' }, { kind: 'field', value: '' }];
+    if (v === 'calc') s.how = s.how || { kind: '' };
+    structural();
+  });
+}
 function addItemForm(box, k, s, cols, sources, kindBefore, tail) {
   const row = (kids) => el('div', { class: 'row' }, kids);
   const lbl = (t) => el('span', { class: 'lbl', text: t });
+  const cases = Array.isArray(s.cases) ? s.cases : [];
+  const newCase = () => { (s.cases = s.cases || []).push({ conditions: [{ field: '', op: 'eq', value: '', valueKind: 'const' }], from: 'const', value: '' }); structural(); };
+  box.appendChild(row([lbl(M('dv.fieldName')), text(k + '.name', s.name, (v) => { s.name = v; }, '', 12), lbl('=')]
+    .concat(cases.length ? [] : [fromPick(k, s)]).concat(tail || [])));
+  cases.forEach((c, ci) => {
+    const ck = k + '.case' + ci;
+    const part = el('div', { class: 'addcase' });
+    condsEditor(part, ck, c, cols, false, M('dv.add.when'));
+    part.appendChild(row([lbl(M('dv.add.then')), fromPick(ck, c),
+      el('button', { class: 'x', text: '✕', title: M('dv.add.removeCase'), 'aria-label': M('dv.add.removeCase'), onclick: () => { s.cases.splice(ci, 1); if (!s.cases.length) delete s.cases; structural(); } })]));
+    valueForm(part, ck, c, cols, sources, kindBefore);
+    box.appendChild(part);
+  });
+  if (cases.length) box.appendChild(row([lbl(M('dv.add.otherwise')), fromPick(k, s)]));
+  valueForm(box, k, s, cols, sources, kindBefore);
+  box.appendChild(row([el('button', { class: 'link small', text: M('dv.add.addCase'), title: M('dv.add.addCaseTitle'), onclick: newCase })]));
+}
+function valueForm(box, k, s, cols, sources, kindBefore) {
+  const row = (kids) => el('div', { class: 'row' }, kids);
+  const lbl = (t) => el('span', { class: 'lbl', text: t });
   const from = s.from || 'const';
-  box.appendChild(row([lbl(M('dv.fieldName')), text(k + '.name', s.name, (v) => { s.name = v; }, '', 12), lbl('='),
-    pick(k + '.from', from, [['const', M('dv.add.const')], ['column', M('dv.add.column')], ['calc', M('dv.add.calc')], ['parts', M('dv.add.parts')], ['input', M('dv.add.input')], ['expr', M('dv.add.expr')]], (v) => {
-      s.from = v;
-      if (v === 'parts' && !(s.parts && s.parts.length)) s.parts = [{ kind: 'field', value: '' }, { kind: 'text', value: ' ' }, { kind: 'field', value: '' }];
-      if (v === 'calc') s.how = s.how || { kind: '' };
-      structural();
-    })].concat(tail || [])));
   if (from === 'const') box.appendChild(row([lbl(M('dv.valuePh')), text(k + '.v', s.value, (v) => { s.value = v; }, '', 18)]));
   else if (from === 'column') box.appendChild(row([lbl(M(kindBefore === 'list' ? 'dv.column' : 'dv.field')), columnPick(k + '.c', s.column, cols, (v) => { s.column = v; structural(); })]));
   else if (from === 'input') box.appendChild(row([lbl(M('dv.add.from')), sourcePick(k + '.path', s.path, sources, (v) => { s.path = v; structural(); })]));
@@ -711,6 +772,32 @@ function addItemForm(box, k, s, cols, sources, kindBefore, tail) {
     t.classList.add('mono');
     box.appendChild(row([lbl(M('dv.add.expr')), t]));
   }
+}
+
+// Conditions on the fields of an element, all or any of them. Filter keeps one
+// row at least; a case of Add field can drop its last one.
+function condsEditor(box, k, s, cols, keepOne, firstLabel) {
+  const row = (kids) => el('div', { class: 'row' }, kids);
+  const lbl = (t) => el('span', { class: 'lbl', text: t });
+  s.conditions = s.conditions || [];
+  if (!s.conditions.length) s.conditions.push({ field: '', op: 'eq', value: '', valueKind: 'const' });
+  s.conditions.forEach((c, ci) => {
+    const fs = fieldsIn(c);
+    const kids = [
+      ci === 0 ? lbl(firstLabel || M('dv.where')) : lbl(s.join === 'or' ? M('dv.or') : M('dv.and')),
+      fs.length > 1 ? pick(k + '.c' + ci + '.m', c.match === 'all' ? 'all' : 'any', [['any', M('dv.match.any')], ['all', M('dv.match.all')]], (v) => { c.match = v; structural(); }, M('dv.match.title')) : null,
+      columnsPick(k + '.c' + ci + '.f', fs, cols, (v) => { setFields(c, v); structural(); }),
+      pick(k + '.c' + ci + '.op', c.op || 'eq', OPS.map((o) => [o, M('cond.op.' + o)]), (v) => { c.op = v; structural(); })
+    ];
+    if (NO_VALUE.indexOf(c.op) < 0) kids.push(text(k + '.c' + ci + '.v', c.value, (v) => { c.value = v; c.valueKind = 'const'; }, '', 14));
+    if (c.op === 'between') kids.push(lbl(M('dv.andValue')), text(k + '.c' + ci + '.v2', c.value2, (v) => { c.value2 = v; c.value2Kind = 'const'; }, '', 14));
+    if (s.conditions.length > 1 || !keepOne) kids.push(el('button', { class: 'x', text: '✕', onclick: () => { s.conditions.splice(ci, 1); structural(); } }));
+    box.appendChild(row(kids));
+  });
+  box.appendChild(row([
+    el('button', { class: 'link', text: M('dv.addCondition'), onclick: () => { s.conditions.push({ field: '', op: 'eq', value: '', valueKind: 'const' }); structural(); } }),
+    s.conditions.length > 1 ? pick(k + '.join', s.join === 'or' ? 'or' : 'and', [['and', M('dv.joinAnd')], ['or', M('dv.joinOr')]], (v) => { s.join = v; structural(); }) : null
+  ]));
 }
 
 const LIST_STEPS = ['filter', 'sort', 'distinct', 'reverse', 'merge', 'compare', 'append', 'columns', 'drop', 'flatten', 'change', 'skip', 'limit'];
@@ -803,12 +890,26 @@ function renameResult(from, to) {
     q.source = moved(q.source);
     for (const s of q.steps || []) {
       if (s.other) s.other = moved(s.other);
-      for (const x of [s].concat(s.kind === 'add' && Array.isArray(s.more) ? s.more : [])) {
+      const items = [s].concat(s.kind === 'add' && Array.isArray(s.more) ? s.more : []);
+      for (const x of [].concat(...items.map((y) => [y].concat(Array.isArray(y.cases) ? y.cases : [])))) {
         if (x.from === 'input' && x.path) x.path = moved(x.path);
         if (x.from === 'expr' && x.expr) x.expr = String(x.expr).replace(word, (m, pre) => pre + to);
       }
     }
   }
+}
+// The name the result has in the text it is written as: the prefix of each key
+// in properties, the root element in XML. Unlike the result name it may hold
+// dots and dashes (product.product-list); empty: the result name.
+function outNameField(pi, p) {
+  const t = text('p' + pi + '.outName', p.outName, (v) => {
+    const clean = v.replace(/\s+/g, '');
+    if (clean !== v) { const at = t.selectionStart; t.value = clean; try { t.setSelectionRange(at, at); } catch (e) { /* not a text field */ } }
+    if (clean) p.outName = clean; else delete p.outName;
+  }, String(p.name || '').trim() || 'result', 18);
+  t.title = M('dv.outNameTitle');
+  t.setAttribute('aria-label', M('dv.outName'));
+  return t;
 }
 function nameField(pi, p) {
   let before = String(p.name || '');
@@ -831,16 +932,18 @@ function nameField(pi, p) {
 }
 function commentRow(p, pi, r) {
   const c = p.comment && typeof p.comment === 'object' ? p.comment : {};
+  const chosen = (Array.isArray(c.fields) ? c.fields : [c.field]).filter((x) => x !== undefined && x !== null && String(x).trim());
   const cols = (r.endColumns || []).filter((x) => x !== '');
+  const set = (list) => { if (list.length) p.comment = { fields: list, keep: c.keep !== false }; else delete p.comment; structural(); };
   const kids = [
     el('span', { class: 'lbl', text: M('dv.comment') }),
-    columnPick('p' + pi + '.comment', c.field || '', cols, (v) => { if (v) p.comment = { field: v, keep: c.keep !== false }; else delete p.comment; structural(); }, M('dv.commentNone'))
+    columnsPick('p' + pi + '.comment', chosen, cols, set, M('dv.commentNone'))
   ];
-  if (c.field) {
+  if (chosen.length) {
     const cb = el('input', { type: 'checkbox' });
     cb.checked = c.keep !== false;
-    cb.addEventListener('change', () => { p.comment = { field: c.field, keep: cb.checked }; structural(); });
-    kids.push(el('label', { class: 'check' }, [cb, M('dv.commentKeep')]));
+    cb.addEventListener('change', () => { p.comment = { fields: chosen, keep: cb.checked }; structural(); });
+    kids.push(el('label', { class: 'check' }, [cb, M(chosen.length > 1 ? 'dv.commentKeepAll' : 'dv.commentKeep')]));
     if ((doc.format || 'json') === 'csv') kids.push(el('span', { class: 'dim small', text: M('dv.commentNoCsv') }));
   }
   return el('div', { class: 'row' }, kids);
@@ -958,25 +1061,28 @@ function renderWork() {
       body.appendChild(el('div', { class: 'row result-row' }, [
         el('span', { class: 'lbl', text: M('dv.result') }),
         pick('p' + pi + '.fmt', doc.format || 'json', [['json', 'JSON'], ['xml', 'XML'], ['yaml', 'YAML'], ['csv', 'CSV'], ['properties', 'properties']], (v) => { doc.format = v; structural(); }),
-        el('button', { class: 'link', text: M('run.openEditor'), onclick: () => vscodeApi.postMessage({ type: 'openOutput', text: r.text, format: doc.format || 'json', comments: !!(p.comment && p.comment.field) }) }),
-        el('button', { class: 'link', 'data-key': 'p' + pi + '.copy', text: M('dv.copy'), title: M('dv.copyTitle'), onclick: (e) => {
-          vscodeApi.postMessage({ type: 'copyOutput', text: r.text });
-          const b = e.currentTarget;
-          b.textContent = M('dv.copied');
-          setTimeout(() => { if (b.isConnected) b.textContent = M('dv.copy'); }, 1500);
-        } })
+        ['properties', 'xml'].indexOf(doc.format || 'json') >= 0 ? el('span', { class: 'lbl', text: M('dv.outName') }) : null,
+        ['properties', 'xml'].indexOf(doc.format || 'json') >= 0 ? outNameField(pi, p) : null,
+        el('button', { class: 'link', text: M('run.openEditor'), onclick: () => vscodeApi.postMessage({ type: 'openOutput', text: r.text, format: doc.format || 'json', comments: !!(p.comment && ((Array.isArray(p.comment.fields) && p.comment.fields.length) || p.comment.field)) }) })
       ]));
       body.appendChild(commentRow(p, pi, r));
-      body.appendChild(el('div', { class: 'codebox' }, [
-        el('pre', { text: r.text }),
-        el('button', { type: 'button', class: 'codecopy', title: M('dv.copyTitle'), 'aria-label': M('dv.copyTitle'), onclick: (e) => {
-          vscodeApi.postMessage({ type: 'copyOutput', text: r.text });
-          const b = e.currentTarget;
-          b.textContent = '✓ ' + M('dv.copied');
-          b.classList.add('done');
-          setTimeout(() => { if (b.isConnected) { b.textContent = M('dv.copy'); b.classList.remove('done'); } }, 1500);
-        } }, [M('dv.copy')])
-      ]));
+      const pre = el('pre', { text: r.text });
+      const copy = el('button', { type: 'button', class: 'codecopy', title: M('dv.copyTitle'), 'aria-label': M('dv.copyTitle'), onclick: (e) => {
+        vscodeApi.postMessage({ type: 'copyOutput', text: r.text });
+        const b = e.currentTarget;
+        b.replaceChildren(icon('check'));
+        b.classList.add('done');
+        b.title = M('dv.copied');
+        setTimeout(() => { if (b.isConnected) { b.replaceChildren(icon('copy')); b.classList.remove('done'); b.title = M('dv.copyTitle'); } }, 1500);
+      } }, [icon('copy')]);
+      body.appendChild(el('div', { class: 'codebox' }, [pre, copy]));
+      // Keep the button clear of the scrollbar of the text.
+      requestAnimationFrame(() => {
+        if (!pre.isConnected) return;
+        const cs = getComputedStyle(pre);
+        const bar = pre.offsetWidth - pre.clientWidth - parseFloat(cs.borderLeftWidth) - parseFloat(cs.borderRightWidth);
+        copy.style.right = (8 + Math.max(0, bar)) + 'px';
+      });
     }
     card.appendChild(body);
     box.appendChild(card);

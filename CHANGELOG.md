@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased]
+
+- Remove columns shows the fields as a tree of checkboxes instead of a long
+  list of nested paths: a field with fields inside opens below its row, with
+  the number of ticked ones inside; ticking it removes it with all it holds.
+- The result is copied with an icon in its corner, which keeps clear of the
+  scrollbar; the second Copy above the result is gone.
+- Comments before each element can come from several fields, one comment line
+  for each. A lab saved with one comment field opens as before.
+- **name in the output** for properties and XML: the key prefix or root
+  element of the result text, with dots and dashes allowed
+  (`product.product-list`), apart from the result name other steps refer to.
+- Add field takes a value by conditions: **+ value when…** adds a case with
+  its conditions and value; the first case met wins, else the value after
+  **otherwise**.
+
 ## [1.5.0] - 2026-11-17
 
 - Several columns in one step: a Filter condition on several columns (**any

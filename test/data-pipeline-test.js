@@ -269,6 +269,10 @@ runChecks([
     [o('properties', true).startsWith('# Konto A\nresult[0].Name=Konto A') && o('properties', true).includes('# Konto B\nresult[1].Name'), 'properties: a comment before each element'],
     [o('json', true).startsWith('[\n  // Konto A\n  {') && o('json', true).includes('  // Konto B\n  {'), 'JSON with comments'],
     [o('csv', true) === outputText(v, 'csv', 'result'), 'CSV: no comments'],
+    [outputText([{ Name: 'A', code: '1', x: 'y' }, { Name: 'B', code: '2', x: 'z' }], 'properties', 'result', { commentFields: ['Name', 'code'], keepField: false }) === '# A\n# 1\nresult[0].x=y\n# B\n# 2\nresult[1].x=z\n', 'properties: a comment line for each field picked, the fields left out'],
+    [outputText(v, 'json', 'result', { commentFields: ['Name', 'code'] }).startsWith('[\n  // Konto A\n  // 1\n  {'), 'JSON: a comment line for each field'],
+    [outputText([{ Name: 'A' }, { Name: 'B', code: '2' }], 'yaml', 'r', { commentFields: ['code', 'Name'] }).startsWith('# A\n- Name: A\n# 2\n# B\n'), 'an empty field gives no comment line'],
+    [outputText(v, 'xml', 'result', { commentField: 'Name' }) === outputText(v, 'xml', 'result', { commentFields: ['Name'] }), 'one field the old way, the same'],
     [outputText(v, 'xml', 'result', { commentField: 'Name' }).indexOf('<!--') > 0 && !outputText([{ Name: 'a--b' }], 'xml', 'r', { commentField: 'Name' }).includes('a--b -->'), 'no -- inside an XML comment']
   ]);
 }
@@ -299,5 +303,23 @@ runChecks([
     [JSON.stringify(q('chgO').result) === '{"a":" S ","b":" T "}', 'several fields of an object changed'],
     [col('add2', 'k') === 'K,K,K,K' && col('add2', 'ab') === 'BK,AK,BK,AK' && col('add2', 'x2') === '4,20,2,20', 'several fields added in one step, each seeing the ones before'],
     [JSON.stringify(q('addO').result) === '{"a":" s ","b":" t ","k":"1","m":"1"}', 'several fields added to an object']
+  ]);
+}
+
+{
+  const { runDocument } = require('../src/dataPipeline');
+  const { stepText } = require('../src/algorithmMd');
+  const step = { kind: 'add', name: 'variants', from: 'const', value: 'INDV', cases: [
+    { conditions: [{ field: 'type', op: 'eq', value: 'J', valueKind: 'const' }], from: 'const', value: 'INDV,JOIN' },
+    { conditions: [{ field: 'n', op: 'gt', value: '4', valueKind: 'const' }, { field: 'type', op: 'eq', value: 'X', valueKind: 'const' }], join: 'or', from: 'column', column: 'type' },
+    { conditions: [{ field: '', op: 'eq', value: '' }], from: 'const', value: 'never' }
+  ] };
+  const d = { inputs: [{ name: 'l', text: '[{"type":"J","n":1},{"type":"K","n":5},{"type":"X","n":1},{"type":"K","n":1}]' }, { name: 'o', text: '{"type":"J"}' }],
+    pipelines: [{ name: 'a', source: 'l', steps: [step] }, { name: 'b', source: 'o', steps: [step] }] };
+  const r = runDocument(d, {});
+  runChecks([
+    [JSON.stringify(r.pipelines[0].result.map((x) => x.variants)) === '["INDV,JOIN","K","X","INDV"]', 'Add field: the value of the first case met, else the value after otherwise; a case with no condition never applies'],
+    [r.pipelines[1].result.variants === 'INDV,JOIN', 'Add field on an object: cases too'],
+    [stepText(step, []).includes('"INDV,JOIN" when `type` = `J`') && stepText(step, []).includes('otherwise "INDV"'), 'Markdown: the cases and otherwise']
   ]);
 }

@@ -177,9 +177,16 @@ A step can work on several columns together:
   are the same.
 - **Change column**: the transformation changes each column picked, in its
   place.
-- **Remove columns**: **all** and **none** tick or clear every column.
+- **Remove columns**: **all** and **none** tick or clear every column. A
+  field with fields inside has a **▸** button that opens them below as one
+  more row of checkboxes; ticking the field itself removes it with everything
+  in it.
 - **Add field**: **+ another field** adds more fields in the same step; a
   field sees the ones added before it.
+  **+ value when…** gives the field another value for the elements that meet
+  conditions (the same conditions as in Filter): the first case met gives the
+  value, the others get the value after **otherwise**. With no case, the
+  field has one value for all.
 - **Output fields**: **+ all the others** adds every column not taken yet.
 
 Pick columns from **+ column**; **all** adds every column not picked yet, and
@@ -298,14 +305,20 @@ Inspect the final result of your transformation and choose an output format:
 
 CSV output follows the structure displayed in the result table.
 
-**comment before each element** puts the value of a chosen field before each
-element of the result as a comment: `<!-- … -->` in XML, `# …` in YAML and
-properties, `// …` in JSON (JSON with comments). The field can stay in the
+**comments before each element** puts the values of the chosen fields before
+each element of the result as comments, one line for each field, in the order
+picked: `<!-- … -->` in XML, `# …` in YAML and properties, `// …` in JSON
+(JSON with comments). An empty field gives no line. The fields can stay in the
 data or be left out. CSV has no comments.
 
+For properties and XML, **name in the output** sets the name the result has in
+the text: the start of each key in properties, the root element in XML. It may
+hold dots and dashes, e.g. `product.product-list` gives
+`product.product-list[0].type=…`. Left empty, the result name is used.
+
 Select **Open in editor** to open the generated result in a new VS Code editor
-tab, or **Copy** to put it on the clipboard; **Copy** is also in the top right
-corner of the result code.
+tab, or the copy icon in the top right corner of the result code to put it on
+the clipboard.
 
 ## Logic Spec Integration
 
