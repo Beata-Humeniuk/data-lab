@@ -9,6 +9,9 @@
   scrollbar; the second Copy above the result is gone.
 - Comments before each element can come from several fields, one comment line
   for each. A lab saved with one comment field opens as before.
+- **name in the output** for properties and XML: the key prefix or root
+  element of the result text, with dots and dashes allowed
+  (`product.product-list`), apart from the result name other steps refer to.
 
 ## [1.5.0] - 2026-11-17
 

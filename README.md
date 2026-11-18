@@ -307,6 +307,11 @@ picked: `<!-- … -->` in XML, `# …` in YAML and properties, `// …` in JSON
 (JSON with comments). An empty field gives no line. The fields can stay in the
 data or be left out. CSV has no comments.
 
+For properties and XML, **name in the output** sets the name the result has in
+the text: the start of each key in properties, the root element in XML. It may
+hold dots and dashes, e.g. `product.product-list` gives
+`product.product-list[0].type=…`. Left empty, the result name is used.
+
 Select **Open in editor** to open the generated result in a new VS Code editor
 tab, or the copy icon in the top right corner of the result code to put it on
 the clipboard.

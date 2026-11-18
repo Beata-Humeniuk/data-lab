@@ -220,6 +220,8 @@ const EN = {
   "dv.help": "1. Add an input on the left and paste its data (JSON, XML, YAML, CSV, key=value) or load a file. 2. Add a transformation on the left, under Transformations, and pick what to transform: a list, an object or a field. 3. Add steps — the result of each shows right under it. 4. Save (Ctrl+S).",
   "dv.list": "list",
   "dv.resultName": "result name",
+  "dv.outName": "name in the output",
+  "dv.outNameTitle": "The name written in the result: the start of each key in properties, the root element in XML. Dots and dashes are allowed, e.g. product.product-list. Empty: the result name.",
   "dv.resultNameTitle": "Name the result to use it as a source in any other transformation of this lab; letters, digits and _ — a rename follows to the transformations that use it",
   "dv.results": "Results",
   "cond.op.eq": "=",

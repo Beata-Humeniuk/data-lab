@@ -867,6 +867,19 @@ function renameResult(from, to) {
     }
   }
 }
+// The name the result has in the text it is written as: the prefix of each key
+// in properties, the root element in XML. Unlike the result name it may hold
+// dots and dashes (product.product-list); empty: the result name.
+function outNameField(pi, p) {
+  const t = text('p' + pi + '.outName', p.outName, (v) => {
+    const clean = v.replace(/\s+/g, '');
+    if (clean !== v) { const at = t.selectionStart; t.value = clean; try { t.setSelectionRange(at, at); } catch (e) { /* not a text field */ } }
+    if (clean) p.outName = clean; else delete p.outName;
+  }, String(p.name || '').trim() || 'result', 18);
+  t.title = M('dv.outNameTitle');
+  t.setAttribute('aria-label', M('dv.outName'));
+  return t;
+}
 function nameField(pi, p) {
   let before = String(p.name || '');
   const t = text('p' + pi + '.name', p.name, (v) => {
@@ -1017,6 +1030,8 @@ function renderWork() {
       body.appendChild(el('div', { class: 'row result-row' }, [
         el('span', { class: 'lbl', text: M('dv.result') }),
         pick('p' + pi + '.fmt', doc.format || 'json', [['json', 'JSON'], ['xml', 'XML'], ['yaml', 'YAML'], ['csv', 'CSV'], ['properties', 'properties']], (v) => { doc.format = v; structural(); }),
+        ['properties', 'xml'].indexOf(doc.format || 'json') >= 0 ? el('span', { class: 'lbl', text: M('dv.outName') }) : null,
+        ['properties', 'xml'].indexOf(doc.format || 'json') >= 0 ? outNameField(pi, p) : null,
         el('button', { class: 'link', text: M('run.openEditor'), onclick: () => vscodeApi.postMessage({ type: 'openOutput', text: r.text, format: doc.format || 'json', comments: !!(p.comment && ((Array.isArray(p.comment.fields) && p.comment.fields.length) || p.comment.field)) }) })
       ]));
       body.appendChild(commentRow(p, pi, r));
