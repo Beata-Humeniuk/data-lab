@@ -7,6 +7,8 @@
   the number of ticked ones inside; ticking it removes it with all it holds.
 - The result is copied with an icon in its corner, which keeps clear of the
   scrollbar; the second Copy above the result is gone.
+- Comments before each element can come from several fields, one comment line
+  for each. A lab saved with one comment field opens as before.
 
 ## [1.5.0] - 2026-11-17
 

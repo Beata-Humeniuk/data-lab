@@ -888,16 +888,18 @@ function nameField(pi, p) {
 }
 function commentRow(p, pi, r) {
   const c = p.comment && typeof p.comment === 'object' ? p.comment : {};
+  const chosen = (Array.isArray(c.fields) ? c.fields : [c.field]).filter((x) => x !== undefined && x !== null && String(x).trim());
   const cols = (r.endColumns || []).filter((x) => x !== '');
+  const set = (list) => { if (list.length) p.comment = { fields: list, keep: c.keep !== false }; else delete p.comment; structural(); };
   const kids = [
     el('span', { class: 'lbl', text: M('dv.comment') }),
-    columnPick('p' + pi + '.comment', c.field || '', cols, (v) => { if (v) p.comment = { field: v, keep: c.keep !== false }; else delete p.comment; structural(); }, M('dv.commentNone'))
+    columnsPick('p' + pi + '.comment', chosen, cols, set, M('dv.commentNone'))
   ];
-  if (c.field) {
+  if (chosen.length) {
     const cb = el('input', { type: 'checkbox' });
     cb.checked = c.keep !== false;
-    cb.addEventListener('change', () => { p.comment = { field: c.field, keep: cb.checked }; structural(); });
-    kids.push(el('label', { class: 'check' }, [cb, M('dv.commentKeep')]));
+    cb.addEventListener('change', () => { p.comment = { fields: chosen, keep: cb.checked }; structural(); });
+    kids.push(el('label', { class: 'check' }, [cb, M(chosen.length > 1 ? 'dv.commentKeepAll' : 'dv.commentKeep')]));
     if ((doc.format || 'json') === 'csv') kids.push(el('span', { class: 'dim small', text: M('dv.commentNoCsv') }));
   }
   return el('div', { class: 'row' }, kids);
@@ -1015,7 +1017,7 @@ function renderWork() {
       body.appendChild(el('div', { class: 'row result-row' }, [
         el('span', { class: 'lbl', text: M('dv.result') }),
         pick('p' + pi + '.fmt', doc.format || 'json', [['json', 'JSON'], ['xml', 'XML'], ['yaml', 'YAML'], ['csv', 'CSV'], ['properties', 'properties']], (v) => { doc.format = v; structural(); }),
-        el('button', { class: 'link', text: M('run.openEditor'), onclick: () => vscodeApi.postMessage({ type: 'openOutput', text: r.text, format: doc.format || 'json', comments: !!(p.comment && p.comment.field) }) })
+        el('button', { class: 'link', text: M('run.openEditor'), onclick: () => vscodeApi.postMessage({ type: 'openOutput', text: r.text, format: doc.format || 'json', comments: !!(p.comment && ((Array.isArray(p.comment.fields) && p.comment.fields.length) || p.comment.field)) }) })
       ]));
       body.appendChild(commentRow(p, pi, r));
       const pre = el('pre', { text: r.text });

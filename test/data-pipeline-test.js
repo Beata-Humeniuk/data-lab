@@ -269,6 +269,10 @@ runChecks([
     [o('properties', true).startsWith('# Konto A\nresult[0].Name=Konto A') && o('properties', true).includes('# Konto B\nresult[1].Name'), 'properties: a comment before each element'],
     [o('json', true).startsWith('[\n  // Konto A\n  {') && o('json', true).includes('  // Konto B\n  {'), 'JSON with comments'],
     [o('csv', true) === outputText(v, 'csv', 'result'), 'CSV: no comments'],
+    [outputText([{ Name: 'A', code: '1', x: 'y' }, { Name: 'B', code: '2', x: 'z' }], 'properties', 'result', { commentFields: ['Name', 'code'], keepField: false }) === '# A\n# 1\nresult[0].x=y\n# B\n# 2\nresult[1].x=z\n', 'properties: a comment line for each field picked, the fields left out'],
+    [outputText(v, 'json', 'result', { commentFields: ['Name', 'code'] }).startsWith('[\n  // Konto A\n  // 1\n  {'), 'JSON: a comment line for each field'],
+    [outputText([{ Name: 'A' }, { Name: 'B', code: '2' }], 'yaml', 'r', { commentFields: ['code', 'Name'] }).startsWith('# A\n- Name: A\n# 2\n# B\n'), 'an empty field gives no comment line'],
+    [outputText(v, 'xml', 'result', { commentField: 'Name' }) === outputText(v, 'xml', 'result', { commentFields: ['Name'] }), 'one field the old way, the same'],
     [outputText(v, 'xml', 'result', { commentField: 'Name' }).indexOf('<!--') > 0 && !outputText([{ Name: 'a--b' }], 'xml', 'r', { commentField: 'Name' }).includes('a--b -->'), 'no -- inside an XML comment']
   ]);
 }

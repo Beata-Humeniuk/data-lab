@@ -215,7 +215,7 @@ async function openLab(context, file, id) {
     r.pipelines.forEach((p, i) => {
       const pl = current().pipelines[i] || {};
       const comment = pl.comment && typeof pl.comment === 'object' ? pl.comment : {};
-      if (p.result !== undefined && p.result !== null) p.text = dp.outputText(p.result, fmt, String(pl.name || '').trim() || 'result', { commentField: comment.field, keepField: comment.keep !== false });
+      if (p.result !== undefined && p.result !== null) p.text = dp.outputText(p.result, fmt, String(pl.name || '').trim() || 'result', { commentFields: dp.commentFieldsOf(comment), keepField: comment.keep !== false });
       delete p.result;
     });
     delete r.root;

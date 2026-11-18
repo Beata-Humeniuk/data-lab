@@ -428,8 +428,9 @@ function plainOutput(v, format, name) {
   if (format === 'xml') return serialize(v, 'xml', name);
   return serialize(unmarked(v), RESULT_FORMATS.indexOf(format) >= 0 ? format : 'json', name);
 }
-// A comment before each element of a list (before an object: one), its text
-// the value of one of the element's fields. CSV has no comments.
+// Comments before each element of a list (before an object: before it), one
+// line for each field picked, its text the value of that field of the element.
+// CSV has no comments.
 const COMMENT_FORMATS = ['json', 'xml', 'yaml', 'properties'];
 function commentLine(text, format, indent) {
   const t = String(text).replace(/\s*[\r\n]+\s*/g, ' ').trim();
@@ -437,16 +438,25 @@ function commentLine(text, format, indent) {
   if (format === 'json') return indent + '// ' + t;
   return indent + '# ' + t;
 }
+// The fields of a comment setting: { fields: [...] }, or the older { field }.
+function commentFieldsOf(c) {
+  if (!c || typeof c !== 'object') return [];
+  const list = Array.isArray(c.fields) ? c.fields : [c.field];
+  return list.map((f) => String(f === undefined || f === null ? '' : f).trim()).filter((f, i, a) => f && a.indexOf(f) === i);
+}
 function outputText(v, format, name, opts) {
-  const field = String((opts && opts.commentField) || '').trim();
-  if (!field || COMMENT_FORMATS.indexOf(format) < 0 || (!Array.isArray(v) && !isPlainObject(v))) return plainOutput(v, format, name);
+  opts = opts || {};
+  const fields = commentFieldsOf({ fields: opts.commentFields, field: opts.commentField });
+  if (!fields.length || COMMENT_FORMATS.indexOf(format) < 0 || (!Array.isArray(v) && !isPlainObject(v))) return plainOutput(v, format, name);
   const list = Array.isArray(v) ? v : [v];
-  const texts = list.map((el) => { const c = isPlainObject(el) ? cell(el, field) : undefined; return c === undefined || c === null || typeof c === 'object' ? '' : textOf(c); });
-  const data = opts.keepField === false ? list.map((el) => (isPlainObject(el) ? removePath(clone(el), field) : el)) : list;
+  const texts = list.map((el) => fields.map((f) => { const c = isPlainObject(el) ? cell(el, f) : undefined; return c === undefined || c === null || typeof c === 'object' ? '' : textOf(c); })
+    .filter((t) => String(t).trim() !== ''));
+  const data = opts.keepField === false ? list.map((el) => { if (!isPlainObject(el)) return el; const o = clone(el); fields.forEach((f) => removePath(o, f)); return o; }) : list;
   const value = Array.isArray(v) ? data : data[0];
-  if (format === 'json' && !Array.isArray(v)) return (texts[0] ? commentLine(texts[0], 'json', '') + '\n' : '') + plainOutput(value, format, name);
+  const block = (ts, f, indent) => ts.map((t) => commentLine(t, f, indent) + '\n').join('');
+  if (format === 'json' && !Array.isArray(v)) return block(texts[0], 'json', '') + plainOutput(value, format, name);
   if (format === 'json') {
-    const parts = data.map((el, i) => (texts[i] ? commentLine(texts[i], 'json', '  ') + '\n' : '') + JSON.stringify(unmarked(el), null, 2).replace(/^/gm, '  '));
+    const parts = data.map((el, i) => block(texts[i], 'json', '  ') + JSON.stringify(unmarked(el), null, 2).replace(/^/gm, '  '));
     return parts.length ? '[\n' + parts.join(',\n') + '\n]\n' : '[]\n';
   }
   const lines = plainOutput(value, format, name).split('\n');
@@ -457,7 +467,7 @@ function outputText(v, format, name, opts) {
     : (l) => /^  <[^/!?]/.test(l);
   for (const l of lines) {
     if (i < texts.length && starts(l)) {
-      if (texts[i]) out.push(commentLine(texts[i], format, format === 'xml' ? '  ' : ''));
+      texts[i].forEach((t) => out.push(commentLine(t, format, format === 'xml' ? '  ' : '')));
       i++;
     }
     out.push(l);
@@ -791,4 +801,4 @@ function changeCatalog(t) {
     params: k.params.map((p) => ({ key: p.key, label: p.labelKey ? t(p.labelKey) : p.key, def: p.def, size: p.size, options: p.options })) }));
 }
 
-module.exports = { RESULT_FORMATS, COMMENT_FORMATS, outputText, csvText, deepFields, STEP_KINDS, LIST_STEPS, VALUE_STEPS, OBJECT_STEPS, stepsFor, kindOf, readInputs, listsIn, sourcesOf, columnsOf, runDocument, view, valueAt, asList, changeCatalog };
+module.exports = { RESULT_FORMATS, COMMENT_FORMATS, commentFieldsOf, outputText, csvText, deepFields, STEP_KINDS, LIST_STEPS, VALUE_STEPS, OBJECT_STEPS, stepsFor, kindOf, readInputs, listsIn, sourcesOf, columnsOf, runDocument, view, valueAt, asList, changeCatalog };

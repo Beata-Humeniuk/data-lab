@@ -163,7 +163,10 @@ function algorithmMd(opts) {
   const steps = p.steps || [];
   if (!steps.length) lines.push('No steps.');
   steps.forEach((s, i) => lines.push((i + 1) + '. ' + stepText(s, opts.catalog)));
-  if (p.comment && String(p.comment.field || '').trim()) lines.push('', 'Before each element of the result, a comment: the value of ' + code(p.comment.field) + (p.comment.keep === false ? ', the field left out of the data.' : '.'));
+  const c = p.comment && typeof p.comment === 'object' ? p.comment : {};
+  const commentFields = (Array.isArray(c.fields) ? c.fields : [c.field]).map((f) => String(f === undefined || f === null ? '' : f).trim()).filter(Boolean);
+  if (commentFields.length) lines.push('', 'Before each element of the result, ' + (commentFields.length > 1 ? 'comments: the values of ' : 'a comment: the value of ') + commentFields.map(code).join(', ')
+    + (p.comment.keep === false ? (commentFields.length > 1 ? ', the fields left out of the data.' : ', the field left out of the data.') : '.'));
   if (run && run.result !== undefined && run.result !== null) {
     const v = run.result;
     lines.push('', '## Output', '');

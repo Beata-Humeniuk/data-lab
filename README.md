@@ -301,9 +301,10 @@ Inspect the final result of your transformation and choose an output format:
 
 CSV output follows the structure displayed in the result table.
 
-**comment before each element** puts the value of a chosen field before each
-element of the result as a comment: `<!-- … -->` in XML, `# …` in YAML and
-properties, `// …` in JSON (JSON with comments). The field can stay in the
+**comments before each element** puts the values of the chosen fields before
+each element of the result as comments, one line for each field, in the order
+picked: `<!-- … -->` in XML, `# …` in YAML and properties, `// …` in JSON
+(JSON with comments). An empty field gives no line. The fields can stay in the
 data or be left out. CSV has no comments.
 
 Select **Open in editor** to open the generated result in a new VS Code editor
